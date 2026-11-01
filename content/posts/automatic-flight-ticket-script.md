@@ -1,102 +1,109 @@
 ---
-title: "Automatic flight ticket script"
+title: "Automated Flight Ticket Booking and Availability Monitoring with Splinter"
 date: 2014-12-04T18:37:19+00:00
 url: "/automatic-flight-ticket-script/"
 draft: false
-description: "python script to demonstrate the splinter library this script keep searching till finding a ticket and book it :) rest and wait your reservation number"
-categories: ["blog", "Python", "Web"]
+description: "How to use Python and the Splinter browser automation library to continuously monitor airline reservation systems and automate ticket booking forms."
+categories: ["blog", "Python", "Web", "Automation"]
 ---
 
-python script  to demonstrate  the splinter library
+During peak holiday seasons, securing airline seats on heavily booked routes often requires repeatedly checking booking engines for cancellations.
 
-this script keep searching till finding a ticket and book it  :)
+Using browser automation frameworks like **Splinter** (an abstraction layer built on top of Selenium WebDriver), we can automate the search loop, detect flight inventory releases, fill passenger details, and hold reservations automatically.
 
-rest and wait your reservation number
+---
+
+## What is Splinter?
+
+[Splinter](https://splinter.readthedocs.io/) provides a pythonic API for browser automation. It allows developers to:
+- Navigate web portals and wait for elements.
+- Select radio buttons, dropdowns, and checkboxes.
+- Fill form fields and submit via JavaScript execution.
+- Inspect rendered DOM structures and handle session timeouts.
+
+---
+
+## Automated Booking Workflow
+
+The script continuously queries available flight options for specific routes and travel dates. If the airline portal reports "no flights available" or sessions expire, it automatically restarts the search until seats open up, then populates passenger credentials:
 
 ```python
-#!/usr/bin/env python
+#!/usr/bin/env python3
+"""
+Automated Flight Search and Booking Assistant
+Author: Ahmad Mahfouz (_N1X_)
+"""
+
+import time
+import sys
 from splinter import Browser
-from time import sleep
-from sys import exit
 
-def checkoneway():
-	browser = Browser()
-	url = 'http://www.bookonline.saudiairlines.com'
-	browser.visit(url)
-	browser.find_by_name('TRIP_TYPE')[2].click()  # one way trip
-	browser.fill('WDS_B_LOCATION_1_DISPLAY' , 'Dammam') #from 
-	browser.fill('WDS_E_LOCATION_1_DISPLAY' , 'Riyadh') #to
-	browser.select('onlineCalendar_0Day','09')  #day to reave
-	browser.select('onlineCalendar_0MonthYear','082014')  #month year of travel 
-	browser.select('CABIN','E')  #travel class
-	browser.check('IS_FLEXIBLE')  #checling flexable 
-	browser.select('WDS_NB_ADT','2')  # how many travels  
-	browser.select('WDS_NB_CHD','2')  # how many childenrs
-	browser.find_by_id("onlineSubmit").click()
-	busy = "Flights out are not available for the date / time specified. However, you can see flights for alternate days by selecting other dates below"
-	while browser.is_text_present(busy):
-		browser.quit()
-		checkoneway()
-	if browser.is_text_present("Sorry, but your session has timed out. Please start again"):
-		browser.quit()
-		checkoneway()
-	
-	browser.find_by_id("b0FO0_PREMIUMEDRadioEl")[0].click()
+def check_flight_availability():
+    # Launch browser automation instance (e.g., Firefox or Chrome)
+    with Browser('chrome') as browser:
+        url = 'https://www.example-airline.com/booking'
+        browser.visit(url)
 
-	#form submition
-	browser.execute_script("theOcupForm.submit()")
+        # 1. Configure Search Criteria
+        browser.find_by_name('TRIP_TYPE')[2].click()  # One-way journey
+        browser.fill('ORIGIN_AIRPORT', 'DMM')         # Dammam
+        browser.fill('DEST_AIRPORT', 'RUH')           # Riyadh
+        browser.select('DEPARTURE_DAY', '15')
+        browser.select('DEPARTURE_MONTH', '122026')
+        browser.select('CABIN_CLASS', 'Economy')
+        browser.select('NUM_ADULTS', '1')
 
-	#passenger 1
-	browser.select('TITLE_1','MR')
-	browser.fill('FIRST_NAME_1','Ahmed') #first name
-	browser.fill('LAST_NAME_1','Ibrahim') #lastname
-	browser.select("NATIONALITY_1",'SA')
+        # Submit availability search
+        browser.find_by_id("submitFlightSearch").click()
 
-	#passenger2
-	browser.select('TITLE_2','MS')
-	browser.fill('FIRST_NAME_2','Ahmed')  #first name
-	browser.fill('LAST_NAME_2','Ibrahim') #lastname
-	browser.select("NATIONALITY_2",'SA')
+        # 2. Polling and Retry Loop
+        unavailable_text = "Flights are not available for the date / time specified"
+        session_timeout_text = "Your session has timed out"
 
-	#kid 1 info
-	browser.select('TITLE_3','MTR')  #childern male
-	browser.fill('FIRST_NAME_3','Omar')  #first name
-	browser.fill('LAST_NAME_3','Ezz') #last namr
-	browser.select("NATIONALITY_3",'SA') #nationality 
-	browser.select("dateOfBirthDay3", '10')  
-	browser.select("dateOfBirthMonth3", '05')
-	browser.select("dateOfBirthYear3", '2012')	
+        if browser.is_text_present(unavailable_text) or browser.is_text_present(session_timeout_text):
+            print("[-] No seats currently available. Retrying...")
+            time.sleep(10)
+            return False
 
-	#kid 2 info
-	browser.select('TITLE_4','MISS')  #childern female
-	browser.fill('FIRST_NAME_4','Omnia') #first name
-	browser.fill('LAST_NAME_4','Ezz') #last name
-	browser.select("NATIONALITY_4",'SA')
-	browser.select("dateOfBirthDay4", '09')
-	browser.select("dateOfBirthMonth4", '05')
-	browser.select("dateOfBirthYear4", '2012')
+        # 3. Select First Available Flight
+        print("[+] Flight found! Selecting fare...")
+        browser.find_by_css(".flight-select-radio").first.click()
+        browser.execute_script("document.getElementById('passengerForm').submit();")
 
-	#phone and email confirmation
-	browser.select("TEL_1_TYPE",'MOB')
-	browser.select("TEL_1_COUNTRY_CODE",'+966')
-	browser.fill("TEL_1_NUMBER","01002020794")
-	browser.select("TEL_2_TYPE","RES")
-	browser.select("TEL_2_COUNTRY_CODE",'+20')
-	browser.fill("TEL_2_NUMBER","01000000001")
-	browser.fill("CONTACT_POINT_EMAIL_1",'root@mail.com')
-	browser.fill("WDS_CONFIRM_EMAIL_1",'root@mail.com')
-	browser.check("WDS_SAVE_COOKIE")
-	browser.execute_script("theALPIForm.submit()")
-	browser.execute_script("thePURCForm.selectPaymentType('Sadad')")
-	browser.check("WDS_CONDITIONS")
-	browser.execute_script("thePURCForm.submit()")
+        # 4. Populate Passenger Information
+        browser.select('TITLE_1', 'MR')
+        browser.fill('FIRST_NAME_1', 'John')
+        browser.fill('LAST_NAME_1', 'Doe')
+        browser.select('NATIONALITY_1', 'SA')
 
-	data = str(browser.html)
-	for line in data.readlines():
-		if "recordLocator" in line:
-			print line.split("recordLocator")[1].replace("</span>", "").replace("\">","")
+        browser.fill('CONTACT_PHONE', '+966500000000')
+        browser.fill('CONTACT_EMAIL', 'user@example.com')
+
+        # Accept terms and proceed to payment
+        browser.check('TERMS_CONDITIONS')
+        browser.execute_script("document.getElementById('checkoutForm').submit();")
+
+        # 5. Extract Booking Reference
+        if "recordLocator" in browser.html:
+            booking_ref = browser.find_by_id("bookingReference").text
+            print(f"[+] Reservation Confirmed! PNR: {booking_ref}")
+            return True
+
+    return False
+
+def main():
+    max_retries = 100
+    attempt = 1
+    
+    while attempt <= max_retries:
+        print(f"[*] Search attempt #{attempt}...")
+        success = check_flight_availability()
+        if success:
+            print("[+] Booking process completed successfully.")
+            break
+        attempt += 1
+        time.sleep(5)
 
 if __name__ == "__main__":
-
-	checkoneway()
+    main()
 ```

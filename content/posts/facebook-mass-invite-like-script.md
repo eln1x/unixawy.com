@@ -1,78 +1,93 @@
 ---
-title: "Facebook Mass Invite to Like  script"
+title: "Automating Social Media Post Reactions and Page Invites with JavaScript"
 date: 2016-07-21T12:46:33+00:00
 url: "/facebook-mass-invite-like-script/"
 draft: false
-description: "today I wrote a script to help in sending an invitation to like your page this happens when you promote a post for your audience and they interact with your..."
+description: "A lightweight client-side JavaScript snippet to automate inviting post engagers to follow brand pages via the browser developer console."
 categories: ["blog", "tech", "Web"]
 image: "/uploads/2016/07/Screen-Shot-2016-07-21-at-1.30.18-PM.png"
 ---
 
-today I wrote  a script to help in sending an invitation to like your page
+When marketing campaigns or organic posts achieve high engagement, many users interact with the content (likes, reactions) without following or liking the parent page.
 
-this happens when you promote a post for your audience and they interact with your post but they forget to like your page
+Facebook provides a manual interface to invite users who reacted to a post to like the page. However, manually clicking hundreds of individual invite buttons is tedious.
 
-so this script will help you to mass invite them in once
+![Opening post reactions modal](/uploads/2016/07/Screen-Shot-2016-07-21-at-1.30.18-PM.png)
+*Figure 1: Modal window listing users who reacted to the post.*
 
-![Screen Shot 2016-07-21 at 1.30.18 PM](/uploads/2016/07/Screen-Shot-2016-07-21-at-1.30.18-PM.png)
+---
 
-1 - click on the likes for the post
+## Browser Console Automation Script
 
-2- open your browser console
+By executing a lightweight script in the browser's Developer Tools Console, we can automate scrolling through pagination (`See More`) and dispatching invite clicks with controlled delays to respect client-side rate limits.
 
-paste this code
+### Instructions
+
+1. Open Facebook and click on the reactions count of your post to open the modal dialog.
+2. Press `F12` (or `Ctrl + Shift + I` / `Cmd + Option + I`) to open Developer Tools and navigate to the **Console** tab.
+3. Paste and run the following script:
 
 ```javascript
-function submitMore(){
-	var seemore = document.getElementsByTagName('a');
-	var z = 0;
-	for (var i = 0 ;i < seemore.length;i++){
-		if (seemore[i].innerHTML == 'See More'){
-			seemore[i].click();
-		}
-	}
+/**
+ * Automated Post Engager Inviter
+ * Author: Ahmad Mahfouz (_N1X_)
+ */
+
+function scrollAndInvite() {
+    let inviteButtons = [];
+    let seeMoreButtons = [];
+
+    // Identify clickable buttons inside the active dialog
+    const elements = document.querySelectorAll('div[role="dialog"] a, div[role="dialog"] div[role="button"]');
+
+    elements.forEach(el => {
+        const text = el.innerText.trim();
+        if (text === 'Invite' || text === 'دعوة') {
+            inviteButtons.push(el);
+        } else if (text === 'See More' || text === 'عرض المزيد') {
+            seeMoreButtons.push(el);
+        }
+    });
+
+    // Expand pagination if available
+    if (seeMoreButtons.length > 0) {
+        console.log('[*] Expanding reaction list...');
+        seeMoreButtons.forEach(btn => btn.click());
+    }
+
+    // Dispatch invites with randomized delay to avoid rate limiting
+    let index = 0;
+    function dispatchInvite() {
+        if (index < inviteButtons.length) {
+            inviteButtons[index].click();
+            console.log(`[+] Sent invite ${index + 1} of ${inviteButtons.length}`);
+            index++;
+            setTimeout(dispatchInvite, 800 + Math.random() * 500);
+        } else {
+            console.log('[*] Batch complete. Checking for additional engagers...');
+            setTimeout(scrollAndInvite, 2000);
+        }
+    }
+
+    if (inviteButtons.length > 0) {
+        dispatchInvite();
+    } else {
+        console.log('[+] All visible engagers have been invited.');
+    }
 }
 
-function  CountSeeMore(){
-	var seemore = document.getElementsByTagName('a');
-	var z = 0;
-	for (var i = 0 ;i < seemore.length;i++){
-		if (seemore[i].innerHTML == 'See More'){
-			z  +=1;
-		}
-	}
-	return z;
-}
-
-function timeout() {
-    setTimeout(function () {
-    	var count = CountSeeMore();
-    	if( count != 0 ) {
-    		submitMore();
-    		console.log("scraping..");
-		var links = document.getElementsByTagName('a');
-		for (var i = 0 ; i < links.length ; i++){
-			if(links[i].innerHTML == "Invite"){
-				links[i].click()
-				console.log("invitations sent")
-			}
-		}
-    	}
-        timeout();
-    }, 1000);
-}
-
-mass_invite = timeout()
+// Start automation
+scrollAndInvite();
 ```
 
- 
+---
 
-hit enter
+## Execution Results
 
-and result should be like this
+The script will iteratively expand the list of reaction profiles and trigger invite requests in sequence:
 
-![Screen Shot 2016-07-21 at 1.23.20 PM](/uploads/2016/07/Screen-Shot-2016-07-21-at-1.23.20-PM.png)
+![Invited followers confirmation](/uploads/2016/07/Screen-Shot-2016-07-21-at-1.23.20-PM.png)
+*Figure 2: Successfully dispatching batch invitations directly within the browser.*
 
-as you can see I sent around 200 invitation in once :D
-
-enjoy
+> [!TIP]
+> Include a delay of 800–1500 milliseconds between clicks to prevent automated spam detection mechanisms from temporarily throttling your profile actions.

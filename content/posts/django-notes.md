@@ -1,213 +1,176 @@
 ---
-title: "Django Notes"
+title: "Django Architecture Cheat Sheet: ORM, Signals, Sessions, and Auth"
 date: 2014-12-04T18:47:46+00:00
 url: "/django-notes/"
 draft: false
-description: "ORM Notes Print query Custom Query Raw deep SQL Signals model saved signal Custom Signal Sessions add it to installed apps and middleware apps set session flat..."
-categories: ["blog", "Python"]
+description: "A practical developer reference guide for Django: complex ORM querysets, raw SQL execution, signal dispatching, session management, and custom authentication backends."
+categories: ["blog", "Python", "Web"]
 ---
 
-ORM Notes
+A quick-reference architectural guide covering essential patterns in Django web applications: querysets, signals, raw database queries, session handling, and authentication.
 
-```
-objects.all()
-objects.all().count()
-objects.filter(published=True).count()
-objects.filter(published=True).exists()
-objects.filter(published=True)[:2]
-objects.filter(published=True).values('title','created')[:2]
-objects.filter(published=True).order_by('created')
-objects.filter(published=True).order_by('-created')
+---
 
-objects.filter(published=True, created__gt=datetime(2011,05,01))
-objects.filter(published=True, created__lt=datetime(2011,05,01))
-objects.filter(published=True, created__lt=datetime(2011,05,01)).count()
-objects.filter(published=True, created__lt=datetime(2011,05,01)).order_by('id')
-objects.filter(published=True, created__year=2011.order_by('id')
-objects.filter(published=True, created__month=5, created__year=2011.order_by('id')
-```
+## 1. Django ORM Query Patterns
 
-Print query
+```python
+# Query basic datasets
+Article.objects.all()
+Article.objects.all().count()
+Article.objects.filter(is_published=True).exists()
 
-```
-str(objects.filter(published=True, created__year=2011.order_by('id').query()))
-```
+# Slicing (LIMIT and OFFSET)
+Article.objects.filter(is_published=True)[:5]
 
-Custom Query
+# Specific field projections
+Article.objects.filter(is_published=True).values('title', 'created_at')[:5]
 
-```
-objects.extra(select={'now':NOW()}).values('now')
-objects.exta(select={'count':'SELECT COUNT(*) FROM table_name }).values('count')
+# Ordering
+Article.objects.filter(is_published=True).order_by('-created_at')
 
-objects.extra(where=['id=%s']),params=['3'])
-Note = params prevent from sql injections 
+# Field lookups and date filtering
+from datetime import datetime
+Article.objects.filter(created_at__gte=datetime(2025, 1, 1))
+Article.objects.filter(created_at__year=2025).order_by('id')
+
+# Inspect underlying compiled SQL
+query = Article.objects.filter(is_published=True)
+print(str(query.query))
 ```
 
-Raw
+---
 
-```
-objects.raw('SELECT * from table_name')[0].id
+## 2. Raw SQL and Database Connections
+
+When complex reporting queries or performance bottlenecks require bypassing the ORM:
+
+### Raw QuerySet Mapping
+
+```python
+for article in Article.objects.raw("SELECT id, title FROM myapp_article WHERE is_published = %s", [True]):
+    print(article.id, article.title)
 ```
 
-deep SQL
+### Direct Database Cursor Execution
 
-```
+```python
 from django.db import connection
-cursor = connection.cursor()
-cursor.execute("SELECT * FROM tablename)
-print cursor.fetchone()
-print cursor.fetchall()
+
+def fetch_custom_report():
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT category, COUNT(*) FROM myapp_article GROUP BY category")
+        rows = cursor.fetchall()
+    return rows
 ```
 
-Signals
+---
 
-```bash
-1 = post_save
-2 = request_finshed
-finshed single """
-handlers.py
-def request_finshed(sender,**kwargs):
-  print "finshed",kwargs
+## 3. Signal Handlers and Dispatchers
 
-{
-form app import handelrs  #import the handlers file
-models.py
-from django.core.signals import request_finshed
-request_finshed.connect(handlers,request_finshed)  ## connect to handler
-}
+Signals allow decoupled components to react to events across models and HTTP requests.
+
+### Built-in Model Signals (`post_save`)
+
+In `signals.py`:
+
+```python
+from django.db.models.signals import post_save
+from django.dispatch import receiver
+from myapp.models import Article
+
+@receiver(post_save, sender=Article)
+def notify_subscribers_on_publish(sender, instance, created, **kwargs):
+    if created and instance.is_published:
+        print(f"[+] New article published: {instance.title}")
 ```
 
-model saved signal
+Register the signals module in your app's `apps.py`:
 
-```
-handlers.py
+```python
+from django.apps import AppConfig
 
-def model_saved(sender,**kwargs):
-  print "Saved", kwargs
+class MyAppConfig(AppConfig):
+    default_auto_field = 'django.db.models.BigAutoField'
+    name = 'myapp'
 
-models.py
-from django.core.signals import post_save
-
-post_save.connect(handler,model_saved , sender=Model)
-```
-
- 
-
-Custom Signal
-
- 
-
-```
-signals.py
-from django.dispatcher import signal
-
-signal_name = signal(providing_args['argname'])
-
-import custom signal in the views.py
-
-from appname import signals
-
-signals.signalname.send(sender=ContactForm ,email=email)
-
-import it in the model
-
-from appname.signal import signalname
-
-signalname.connect(handlers,signalname)
+    def ready(self):
+        import myapp.signals
 ```
 
-Sessions
+### Custom Application Signals
 
-add it to installed apps and middleware apps
+```python
+from django.dispatch import Signal
 
-set session
+# Define a custom signal
+payment_verified = Signal()
 
-```
-requst.session['session_vairable_name'] = True
+# Dispatch the signal in a view or service
+payment_verified.send(sender=Order, order_id=1042, amount=99.00)
 
-check_session_exisit = request.session.get('session_vairable_name',False)
-```
-
- 
-
-flat pages
-
- 
-
-```
-settings.py  make sure it installed app and middle ware
-then syncdb :) 
-add pages from admin panel
-
-create template inside templates/flatpages/default.html
-
-{{ block content }}
-  {{ flatpage.content }}
-{{ endblock }}
-
-by default u get free route 
-
-setup custom route for flatpages with name to reuse it in the template
-
-url(r'^about/$' ,'django.contrib.flatpages.views.flatpage' , kwargs('url': '/about/') , name="about_page")
+# Connect a listener handler
+@receiver(payment_verified)
+def handle_payment_completed(sender, **kwargs):
+    print(f"Receipt issued for order {kwargs.get('order_id')}")
 ```
 
-in admin panel set the template path in advanced options
+---
 
-User Authentication
-settings file
+## 4. Session Management
 
-get sure of
-installed app
+Manage user session state across HTTP transactions:
 
-auth
-session
-middleware
-context processor
-
-```
-LOGIN_REDIRECT_URL = '/profile/'
-LOGIN_URL = '/login/'
-```
-
-URLs for login
-
-```
-from django.contrib.auth.views import login,logout
-
-url(r'profile/$','profile', name='homepage_profile')
-
-url(r'login/$', login ,kwargs {'template_name': 'homepage/login.html', name='homepage_login'})
-url(r'login/$', logout ', kwargs {'next_page': '/'}, name='homepage_login'})
+```python
+def user_dashboard(request):
+    # Set session variable
+    request.session['has_visited_dashboard'] = True
+    
+    # Retrieve session variable with fallback
+    theme_preference = request.session.get('theme', 'dark')
+    
+    # Check session existence
+    if 'auth_token' in request.session:
+        # Perform authenticated tasks
+        pass
 ```
 
-protect action in views
+---
 
-```bash
-from django.contrib.auth.decorates import login_required
+## 5. Custom Authentication Backend
 
-@login_required
+Extend Django's standard authentication mechanisms to support email-based authentication, LDAP, or corporate single sign-on (SSO):
 
-*template
+```python
+from django.contrib.auth.backends import ModelBackend
+from django.contrib.auth import get_user_model
 
-{{ user }} # prints username
+UserModel = get_user_model()
 
-{ % if user.is_authenticated % }
+class EmailAuthBackend(ModelBackend):
+    """
+    Authenticate users using an email address instead of a username.
+    """
+    def authenticate(self, request, username=None, password=None, **kwargs):
+        email = kwargs.get('email', username)
+        if email is None:
+            return None
+        try:
+            user = UserModel.objects.get(email=email)
+        except UserModel.DoesNotExist:
+            # Run default password hasher to mitigate timing attacks
+            UserModel().set_password(password)
+            return None
+        
+        if user.check_password(password) and self.user_can_authenticate(user):
+            return user
+        return None
 ```
 
- 
+Register the backend in `settings.py`:
 
-UserProfile
-
-create app called accounts
-
-```
-create app called accounts
-  creat init file inside the app with auth module
-  creat backends.py 
-  from django.contrib.auth.backends import ModelBackend
-  creat class inherit from modelbackend
-  
-  class MyModelBackend(ModelBackend)
-      def authinticate(self,username None ,password None,)
+```python
+AUTHENTICATION_BACKENDS = [
+    'myapp.backends.EmailAuthBackend',
+    'django.contrib.auth.backends.ModelBackend',
+]
 ```
