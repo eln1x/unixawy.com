@@ -1,58 +1,73 @@
 ---
-title: "audit keystrokes with pam"
+title: "Auditing User Keystrokes with pam_tty_audit and Linux Auditd"
 date: 2015-10-07T22:36:23+00:00
 url: "/audit-keystrokes-with-pam/"
 draft: false
-description: "The pam tty audit PAM module is used to enable or disable TTY auditing. By default, the kernel does not audit input on any TTY this module is part of auditd..."
-categories: ["blog", "Linux", "Security"]
+description: "How to capture and audit real-time interactive TTY keystrokes in Linux using the pam_tty_audit module and aureport, preventing bash history tampering."
+categories: ["Linux", "Security"]
+tags: ["linux", "pam", "auditd", "monitoring", "forensics", "ssh"]
 ---
 
-The pam_tty_audit PAM module is used to enable or disable TTY auditing. By default, the kernel does
-not audit input on any TTY
+Relying on standard shell history (`~/.bash_history`) for security auditing is fundamentally flawed: users can unset `HISTFILE`, launch sessions inside `screen`/`tmux`, prepend commands with spaces, or delete history files before logout.
 
-this module is part of auditd and it takes  3 parameters
+To reliably monitor user commands at the kernel level, Linux provides the `pam_tty_audit` PAM module. This module enables TTY input logging directly through the Linux Audit daemon (`auditd`), capturing keystrokes before the shell receives them.
 
-1 - disable  is a pattern to disable the module in specified users u can use =* to disable it globally
+---
 
-2 - enable  is a pattern to enable for specified users
+### Module Parameters
 
-3 - open_only to monitor fork apps
+`pam_tty_audit.so` supports three key arguments:
+1. `enable=<users>`: Comma-separated list or glob pattern of users to audit.
+2. `disable=<users>`: Comma-separated list or glob pattern of users to exclude (e.g., `disable=*` to disable by default).
+3. `open_only`: Prevents recording keystrokes when passwords or non-echoing prompts are active.
 
-let's assume we want to monitor keystrokes via incoming ssh connection
+---
 
-this is helpful because some bad users could remove their history or use screen command
+### Configuration: Auditing SSH Sessions
 
-we will use the pam_tty_audit inside the ssh pam file /etc/pam.d/sshd
+To audit all interactive commands executed over SSH by specific accounts (such as `root` and privileged operators):
 
- 
+1. **Edit the SSH PAM configuration** (`/etc/pam.d/sshd`):
+   ```bash
+   sudo vim /etc/pam.d/sshd
+   ```
 
-add this the module to end of the file
+2. **Append the session directive at the end of the file:**
+   ```text
+   session    required     pam_tty_audit.so open_only disable=* enable=root,admin,tester
+   ```
 
+3. **Ensure the audit daemon is active:**
+   ```bash
+   sudo systemctl enable --now auditd
+   ```
+
+---
+
+### Reviewing Captured Keystrokes
+
+To review keystrokes captured across all audited TTY sessions, use `aureport`:
+
+```bash
+sudo aureport --tty
 ```
-session    required     pam_tty_audit.so open_only disable=* enable=root,tester
-```
 
- 
+#### Example Output:
 
- 
-
-to view users log
-
-```
-aureport --tty
-```
-
-here is output example
-
-```
+```text
+TTY Report
+===============================================
+# date time tid comm data
+===============================================
 1. 10/07/2015 17:39:08 287 0 ? 18 bash "top",<ret>
 2. 10/07/2015 17:39:09 289 0 ? 18 bash "ps",<ret>
 3. 10/07/2015 17:39:11 291 0 ? 18 bash "ps awxf",<ret>
 4. 10/07/2015 17:40:30 299 0 ? 18 bash "exit",<ret>
 5. 10/07/2015 17:56:03 550 500 ? 28 bash "screen -r x",<ret>,"screen -dmS x",<ret>,"screen -r x",<ret>,<^D>
-6. 10/07/2015 17:57:38 576 500 ? 29 bash "echo 100 > /etcdev/null",<ret>,
+6. 10/07/2015 17:57:38 576 500 ? 29 bash "echo 100 > /dev/null",<ret>
 ```
 
-tty report provides u with the userid example 0 ? 18 bash user id 0 for root
-
-500 ? 28 bash user id 500 for tester account
+Each log entry records:
+- **Timestamp & UID**: e.g., UID `0` (`root`), UID `500` (`tester`).
+- **Terminal PID & Shell**: The process context handling input.
+- **Exact keystroke sequence**: Complete commands including control characters (`<ret>`, `^D`).

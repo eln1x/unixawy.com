@@ -1,58 +1,81 @@
 ---
-title: "Rest MySQL root password"
+title: "Resetting MySQL and MariaDB Root Passwords"
 date: 2014-11-24T08:15:35+00:00
 url: "/rest-mysql-root-password/"
 draft: false
-description: "we all hate this ERROR 1045 (28000): the problem starts with \"you can't access and u will not be able to change the MySQL/MariaDB password while the service is..."
+description: "A practical guide to recovering and resetting a forgotten MySQL or MariaDB root password using skip-grant-tables or an init-file."
 categories: ["blog", "Databases", "Linux"]
 ---
 
-we all hate this ERROR 1045 (28000):
+Locked out of MySQL with `ERROR 1045 (28000): Access denied for user 'root'@'localhost'`? 
 
-the problem starts with  "you can't access and u will not be able to change the MySQL/MariaDB password while the service is running u have to disable it and run mysqld_safe which will allow u to update the user table inside MySQL database with no password then u will be able to run MySQL/MariaDB again with  the new password"
+When root credentials are lost or desynchronized, you cannot change the password while the daemon enforces standard privileges. You must restart the database daemon in a bypass mode, update the authentication tables, and restart the service normally.
 
-First Solution
+Here are two reliable methods to recover access.
 
-1 - service mysqld stop
+---
 
-2 - mysqld_safe --skip-grant-tables
+### Method 1: Using `--skip-grant-tables`
 
-3 - run mysql command it will let u in without password
+This method starts the daemon without reading the grant tables, allowing local root login without a password.
 
-4 - now u will be able to  update the user table
+1. **Stop the running MySQL/MariaDB service:**
+   ```bash
+   sudo service mysqld stop
+   # On systemd systems:
+   # sudo systemctl stop mysqld
+   ```
 
-apply this code inside mysql shell
+2. **Start MySQL safely without grant tables:**
+   ```bash
+   sudo mysqld_safe --skip-grant-tables &
+   ```
 
-```sql
-mysql> USER mysql;
-mysql> UPDATE user set password=PASSWORD("UNIXAWY") where User='root';
-mysql> flush privileges;
-mysql> quit
-```
+3. **Log into MySQL without credentials:**
+   ```bash
+   mysql -u root
+   ```
 
-the new root password will be UNIXAWY
+4. **Update the root user password:**
+   ```sql
+   USE mysql;
+   UPDATE user SET password = PASSWORD("YOUR_NEW_PASSWORD") WHERE User = 'root';
+   FLUSH PRIVILEGES;
+   QUIT;
+   ```
+   *(Note: On modern MySQL 5.7+ / 8.0+, use `ALTER USER 'root'@'localhost' IDENTIFIED BY 'YOUR_NEW_PASSWORD';` or update `authentication_string`)*.
 
-5 - killall mysqld
+5. **Stop the temporary daemon and restart normally:**
+   ```bash
+   sudo killall mysqld
+   sudo service mysqld start
+   ```
 
-6- service mysqld start
+---
 
-Second Solution
+### Method 2: Using an `--init-file`
 
-1- create file restmysqlpwd.txt
+If you prefer an automated single-pass reset without interactive shells:
 
-2 - insert this code inside
+1. **Create an initialization SQL script** (e.g., `/tmp/reset_pwd.txt`):
+   ```sql
+   UPDATE mysql.user SET Password = PASSWORD('YOUR_NEW_PASSWORD') WHERE User = 'root';
+   FLUSH PRIVILEGES;
+   ```
 
-```sql
-UPDATE mysql.user SET Password=PASSWORD('UNIXAWY') WHERE User='root';
-FLUSH PRIVILEGES;
-```
+2. **Stop the database service:**
+   ```bash
+   sudo service mysqld stop
+   ```
 
- 
+3. **Execute the init file with `mysqld_safe`:**
+   ```bash
+   sudo mysqld_safe --init-file=/tmp/reset_pwd.txt &
+   ```
 
-3 - service mysqld stop
-
-4 - mysqld_safe --init-file restmysqlpwd.txt
-
-5- killall mysqld
-
-6 - service mysqld start
+4. **Stop the instance and restart cleanly:**
+   ```bash
+   sudo killall mysqld
+   rm -f /tmp/reset_pwd.txt
+   sudo service mysqld start
+   ```
