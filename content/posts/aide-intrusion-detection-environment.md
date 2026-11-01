@@ -1,150 +1,103 @@
 ---
-title: "AIDE : Intrusion Detection Environment"
+title: "Host-Based File Integrity Monitoring with AIDE"
 date: 2015-07-14T05:05:05+00:00
 url: "/aide-intrusion-detection-environment/"
 draft: false
-description: "this article about Intrusion Detection for file system changes like modification changing owner extra, for critical files or directories in our environment we..."
-categories: ["blog", "Linux", "Security", "tech"]
+description: "How to configure Advanced Intrusion Detection Environment (AIDE) on Linux to detect unauthorized file tampering, privilege escalations, ACL changes, and rootkits."
+categories: ["Linux", "Security"]
+tags: ["aide", "file-integrity-monitoring", "fim", "linux", "intrusion-detection", "sysadmin", "compliance"]
 ---
 
-this article about Intrusion Detection for file system changes like modification changing owner extra, for critical files or directories in our environment
+When an adversary compromises a Linux server, they frequently alter system binaries (installing backdoored binaries like `sshd` or `login`), inject malicious cronjobs, modify web directories, or alter file permissions (e.g., granting SUID or world-writable access).
 
-we using a software called AIDE
+**AIDE (Advanced Intrusion Detection Environment)** is a host-based File Integrity Monitoring (FIM) tool that builds a cryptographic baseline database of file attributes, hashes, permissions, and SELinux labels to detect file tampering.
 
-**Advanced Intrusion Detections Environment**
-this software base on a library called mhash this lib used to calculate file hashes
-and AIDE save the file info inside DB with base64 formate
-the information that will be saved depends on the aide configuration file
+---
 
-example of default info for the Linux image file
+### How AIDE Operates
 
+AIDE scans the filesystem according to rules defined in `/etc/aide.conf`, calculates cryptographic checksums (SHA-256, SHA-512) and metadata attributes for each file, and stores them in a baseline database (`/var/lib/aide/aide.db.gz`).
+
+On subsequent verification runs (`aide --check`), AIDE compares the live filesystem against the baseline database and generates a report detailing added, removed, or modified files.
+
+---
+
+### Step 1: Defining Custom Monitoring Rules
+
+In `/etc/aide.conf`, you define rule groups using attribute flags:
+
+| Flag | Monitored Attribute |
+| :--- | :--- |
+| **`p`** | File permissions |
+| **`i`** | Inode number |
+| **`u` / `g`** | User / Group ownership |
+| **`s`** | File size |
+| **`m` / `c`** | Modification time (mtime) / Inode change time (ctime) |
+| **`sha256`** | SHA-256 cryptographic hash |
+| **`acl`** | Extended Access Control Lists |
+| **`selinux`** | SELinux security context label |
+
+#### Example Custom Rule:
+```text
+# Monitor web root for permission tampering, ownership changes, and hash modifications
+WEBMON = p+i+u+g+s+m+c+sha256+acl+selinux
+
+# Apply rule to directory tree
+/var/www/html/n1x   WEBMON
+
+# Exclude noisy, dynamic cache directories
+!/var/www/html/n1x/cache
 ```
-/boot/vmlinuz-3.17.4-301.fc21.x86_64 0 16108227517 100755 18 0 0 5751144 MTQxNzExNTY2OA== MTQyMDMwMTk1Mw== 1 gcKKQ58dI3hgV9O1fbZuAL
-Kxo5tk1U3hqQzyYX5TyYY= uDXtddP+6ZMAvFla06wJraWbbkUG7as9LyNUV8qnofW6vB5yQa4is7yrmLsSR5roIW+3/3W7t+1NrCfOOxMOaA== POSIX,dXNlcjo6cnd4C
-mdyb3VwOjpyLXgKb3RoZXI6OnIteAo=,0 0 c3lzdGVtX3U6b2JqZWN0X3I6Ym9vdF90OnMw 0
+
+---
+
+### Step 2: Initializing the Cryptographic Baseline
+
+Initialize the database:
+
+```bash
+sudo aide --init
 ```
 
-let's decode this
+AIDE outputs the initialized database to `/var/lib/aide/aide.db.new.gz`. Install it as the active baseline:
 
-```
-/boot/vmlinuz-3.17.4-301.fc21.x86_64 0 16108227517 100755 18 0 0 5751144 1417115668 1420301953 1 BINARY  Binary POSIX,user::rwx
-group::r-x
-other::r-x
-,0 0 system_u:object_r:boot_t:s0 0
+```bash
+sudo cp /var/lib/aide/aide.db.new.gz /var/lib/aide/aide.db.gz
 ```
 
-the content owner, file permission, inode, ACL, SELinux file policy
+> **Security Best Practice:** In high-assurance environments, store the active baseline `aide.db.gz` on read-only media or an off-box logging server to prevent attackers who gain root from updating the baseline.
 
- 
+---
 
-simple detection report
+### Step 3: Running Integrity Audits
 
+To audit the filesystem against the baseline:
+
+```bash
+sudo aide --check
 ```
+
+#### Sample Tampering Report:
+
+```text
 AIDE 0.15.1 found differences between database and filesystem!!
-Start timestamp: 2015-07-14 04:36:07
 
 Summary:
-  Total number of files:	143950
-  Added files:			11
-  Removed files:		0
-  Changed files:		8
-
----------------------------------------------------
-Added files:
----------------------------------------------------
-
-added: /usr/bin/htop
-added: /usr/share/doc/htop
-added: /usr/share/doc/htop/AUTHORS
-added: /usr/share/doc/htop/COPYING
-added: /usr/share/doc/htop/ChangeLog
-added: /usr/share/doc/htop/README
-added: /usr/share/man/man1/htop.1.gz
-added: /usr/share/pixmaps/htop.png
-added: /var/log/cups/access_log-20150714
-added: /var/log/monitorix-20150714
-added: /var/log/monitorix-httpd-20150714
-added: /var/www/html/n1x/aide.db
+  Total number of files:  143950
+  Added files:            1
+  Removed files:          0
+  Changed files:          1
 
 ---------------------------------------------------
 Changed files:
 ---------------------------------------------------
-
-changed: /usr/bin
-changed: /usr/share/doc
-changed: /usr/share/man/man1
-changed: /usr/share/pixmaps
-changed: /var/log/cups/access_log
-changed: /var/log/lastlog
-changed: /var/log/monitorix
-changed: /var/log/monitorix-httpd
-
----------------------------------------------------
-Detailed information about changes:
----------------------------------------------------
-
-Directory: /usr/bin
- Mtime    : 2015-07-08 12:06:15              , 2015-07-14 04:36:06
- Ctime    : 2015-07-08 12:06:15              , 2015-07-14 04:36:06
-
-Directory: /usr/share/doc
- Mtime    : 2015-07-14 04:06:49              , 2015-07-14 04:36:06
- Ctime    : 2015-07-14 04:06:49              , 2015-07-14 04:36:06
- Linkcount: 1056                             , 1058
-
-Directory: /usr/share/man/man1
- Mtime    : 2015-07-14 04:06:49              , 2015-07-14 04:36:06
- Ctime    : 2015-07-14 04:06:49              , 2015-07-14 04:36:06
-
-Directory: /usr/share/pixmaps
- Mtime    : 2014-12-03 22:42:26              , 2015-07-14 04:36:06
- Ctime    : 2015-01-03 18:23:23              , 2015-07-14 04:36:06
-
-File: /var/log/cups/access_log
- Size     : 754                              , 0
- Inode    : 392852                           , 395735
+Directory: /var/www/html/n1x
+ Perm     : drwxr-xr-x                       , drwxrwxrwx
+ ACL      : old = user::rwx,group::r-x,other::r-x
+            new = user::rwx,group::rwx,other::rwx
 
 File: /var/log/lastlog
- Mtime    : 2015-07-14 03:51:31              , 2015-07-14 04:32:02
- Ctime    : 2015-07-14 03:51:31              , 2015-07-14 04:32:02
  SHA256   : zXYJguRcLmAJIGA66Wwx5FdKfHav3nfY , ZWr5tR5LHN1t5uEIGGmTz4ZSkvQcev6X
- SHA512   : M3/rCkZ/8aqLpC7BehIaUrjkP8dZD7QE , eTdILQ8ZQ7+H4TyJGN6B0ZPdGJwrXM38
-
-File: /var/log/monitorix
- Size     : 1337                             , 0
- Inode    : 392753                           , 397808
-
-File: /var/log/monitorix-httpd
- Size     : 61946                            , 0
- Inode    : 397342                           , 397809
 ```
 
-another report for custom folder permission changed to 777
-
-```
-Directory: /var/www/html/n1x
- Perm     : drw-rw-rw-                       , drwxrwxrwx
- ACL      : old = A:
-----
-user::rw-
-group::rw-
-other::rw-
-----
-                  D: <NONE>
-            new = A:
-----
-user::rwx
-group::rwx
-other::rwx
-----
-                  D: <NONE>
-```
-
- 
-
-in configuration file we set a variable called webmon to monitor modification of /var/www/html/n1x/
-
-webmon = p+i+u+g+acl+selinux
-/var/www/html/n1x webmon
-
-the p+i+u+g+acl+selinux stands for permission , inode , user , group , acl , selinux
+The report immediately flags that `/var/www/html/n1x` was changed to world-writable (`777`) and `/var/log/lastlog` had its contents modified.
