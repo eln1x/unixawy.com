@@ -1,0 +1,46 @@
+{{- if .IsHome }}
+<script type="application/ld+json">
+{{- $homeSchema := dict
+  "@context" "https://schema.org"
+  "@type" (site.Params.schema.publisherType | default "Organization" | title)
+  "name" site.Title
+  "url" site.Home.Permalink
+  "description" (site.Params.description | plainify | truncate 180)
+-}}
+{{- $homeSchema | jsonify | safeJS }}
+</script>
+{{- else if .IsPage }}
+{{- $desc := .Description | plainify -}}
+{{- if not $desc -}}
+  {{- $desc = .Summary | plainify -}}
+{{- end -}}
+{{- $authorName := "Ahmad Mahfouz" -}}
+{{- with .Params.author -}}
+  {{- $authorName = . -}}
+{{- else -}}
+  {{- with site.Params.author -}}
+    {{- $authorName = . -}}
+  {{- end -}}
+{{- end -}}
+<script type="application/ld+json">
+{{- $pageSchema := dict
+  "@context" "https://schema.org"
+  "@type" "BlogPosting"
+  "headline" (.Title | plainify)
+  "name" (.Title | plainify)
+  "description" $desc
+  "wordCount" .WordCount
+  "inLanguage" (.Language.Locale | default .Language.Lang | default "en-us")
+  "datePublished" .PublishDate
+  "dateModified" .Lastmod
+  "author" (dict "@type" "Person" "name" (printf "%s" $authorName))
+  "mainEntityOfPage" (dict "@type" "WebPage" "@id" .Permalink)
+  "publisher" (dict
+    "@type" (site.Params.schema.publisherType | default "Organization" | title)
+    "name" site.Title
+    "logo" (dict "@type" "ImageObject" "url" (site.Params.assets.favicon | default "favicon.ico" | absURL))
+  )
+-}}
+{{- $pageSchema | jsonify | safeJS }}
+</script>
+{{- end }}

@@ -1,4 +1,5 @@
 baseURL = "https://www.unixawy.com/"
+locale = "en-us"
 languageCode = "en-us"
 title = "unixawy.com | Security Blog"
 theme = "PaperMod"
