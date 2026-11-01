@@ -1,53 +1,50 @@
 ---
-title: "RedHat Packaging Security with yum"
+title: "Enterprise Linux Security Patching with YUM and Red Hat Security Advisories (RHSA)"
 date: 2015-06-29T09:40:05+00:00
 url: "/redhat-packaging-security-with-yum/"
 draft: false
-description: "RedHat comes with a mitigated package called RHSA (RedHat security advisory) This RHSA comes with a unique id like CVE Contain the date of fix and these type..."
-categories: ["blog", "Linux"]
+description: "How to manage security patching on Red Hat Enterprise Linux and CentOS using YUM security plugins, RHSA IDs, CVE tracking, and updateinfo."
+categories: ["blog", "Linux", "Security"]
 ---
 
-RedHat comes with a mitigated package called RHSA (RedHat security advisory)
+Red Hat Enterprise Linux (RHEL) and derivative distributions classify package fixes into structured advisories:
+- **RHSA (Red Hat Security Advisory):** Contains fixes for security vulnerabilities and assigned CVEs.
+- **RHBA (Red Hat Bug Advisory):** Contains stability, performance, and bug fixes.
+- **RHEA (Red Hat Enhancement Advisory):** Introduces non-critical product enhancements or feature additions.
 
-This RHSA comes with a unique id  like CVE Contain the date of fix and these type packages  come for the applications that shipped from RedHat
+Using the `yum-plugin-security` extension (standard in RHEL 6/7 and integrated directly into `dnf` on RHEL 8/9), system administrators can audit and apply security-only patches without risking unexpected major version upgrades.
 
-Example RHSA-2015:0291
-For listing available updates for application
+---
 
-```
+## 1. Inspecting Available Security Updates
+
+To query available security updates for installed packages without modifying the system, use `yum updateinfo`:
+
+```bash
+# List all pending security advisories
+yum updateinfo list security
+
+# Query security advisories affecting a specific package (e.g., openssl)
 yum updateinfo list openssl
+```
 
+Example output:
+
+```text
 FEDORA-2015-0512  security openssl-1:1.0.1k-1.fc21.x86_64
 FEDORA-2015-4303  security openssl-1:1.0.1k-6.fc21.x86_64
 FEDORA-2015-10108 security openssl-1:1.0.1k-10.fc21.x86_64
 ```
 
-For quick installation to security batches
-
-```
-yum update --security
-```
-
-Get sure that you installed  yum-security plugin first
-
-To install  batches for a specified  RHSA u can use this
-
-```
-yum update --advisory=rhsa
-```
-
-Or batch updates for a specified CVE
-
-```
-yum update --cve=CVE
-```
-
-example
+To display full advisory details, including severity, affected bugzilla IDs, and CVE descriptions:
 
 ```bash
-yum updateinfo FEDORA-2015-9599
-Loaded plugins: langpacks
+yum updateinfo info FEDORA-2015-9599
+```
 
+Output:
+
+```text
 ===============================================================================
   qemu-2.1.3-8.fc21
 ===============================================================================
@@ -55,91 +52,52 @@ Loaded plugins: langpacks
     Release : Fedora 21
        Type : security
      Status : stable
-     Issued : 2015-06-07 09:00:34
-       Bugs : 1151253 - User interface freezes when entering space character in Xfig
-	    : 1213053 - Backport {Haswell,Broadwell}-noTSX cpu models
-	    : 1222894 - qemu: insecure temporary file use in /net/slirp.c [fedora-all]
-	    : 1222892 - CVE-2015-4037 qemu: insecure temporary file use in /net/slirp.c
-Description : * User interface freezes when entering space character in Xfig
-            :   (bz #1151253)
-            : * CVE-2015-4037: insecure temporary file use in
-            :   /net/slirp.c (bz #1222894)
-            : * Backport {Haswell,Broadwell}-noTSX cpu models
-            :   (bz #1213053)
-updateinfo info done
-[root@localhost ~]# yum update --bzs=1222892,1222894,1213053,1151253 --cves=CVE-2015-4037
-Loaded plugins: langpacks
-
---> Finished Dependency Resolution
-
-Dependencies Resolved
-
-=====================================================================================================
- Package                     Arch              Version                      Repository          Size
-=====================================================================================================
-Updating:
- libcacard                   x86_64            2:2.1.3-8.fc21               updates             73 k
- qemu-common                 x86_64            2:2.1.3-8.fc21               updates            258 k
- qemu-guest-agent            x86_64            2:2.1.3-8.fc21               updates            157 k
- qemu-img                    x86_64            2:2.1.3-8.fc21               updates            586 k
- qemu-kvm                    x86_64            2:2.1.3-8.fc21               updates             53 k
- qemu-system-x86             x86_64            2:2.1.3-8.fc21               updates            3.6 M
-
-Transaction Summary
-=====================================================================================================
-Upgrade  6 Packages
-
-Total download size: 4.7 M
-Is this ok [y/d/N]: y
-Downloading packages:
-Delta RPMs reduced 331 k of updates to 172 k (47% saved)
-(1/6): libcacard-2.1.2-6.fc21_2.1.3-8.fc21.x86_64.drpm                        |  53 kB  00:00:01
-(2/6): qemu-kvm-2.1.3-8.fc21.x86_64.rpm                                       |  53 kB  00:00:01
-(3/6): qemu-guest-agent-2.1.3-8.fc21.x86_64.rpm                               | 157 kB  00:00:03
-(4/6): qemu-img-2.1.3-8.fc21.x86_64.rpm                                       | 586 kB  00:00:05
-(5/6): qemu-common-2.1.2-6.fc21_2.1.3-8.fc21.x86_64.drpm                      | 119 kB  00:00:07
-(6/6): qemu-system-x86-2.1.3-8.fc21.x86_64.rpm                                | 3.6 MB  00:00:24
------------------------------------------------------------------------------------------------------
-Total                                                                183 kB/s | 4.6 MB  00:00:25
-Running transaction check
-Running transaction test
-Transaction test succeeded
-Running transaction (shutdown inhibited)
-  Updating   : 2:qemu-common-2.1.3-8.fc21.x86_64                                                1/12
-  Updating   : 2:qemu-system-x86-2.1.3-8.fc21.x86_64                                            2/12
-  Updating   : 2:qemu-kvm-2.1.3-8.fc21.x86_64                                                   3/12
-  Updating   : 2:qemu-img-2.1.3-8.fc21.x86_64                                                   4/12
-  Updating   : 2:libcacard-2.1.3-8.fc21.x86_64                                                  5/12
-  Updating   : 2:qemu-guest-agent-2.1.3-8.fc21.x86_64                                           6/12
-  Cleanup    : 2:qemu-kvm-2.1.2-6.fc21.x86_64                                                   7/12
-  Cleanup    : 2:qemu-system-x86-2.1.2-6.fc21.x86_64                                            8/12
-  Cleanup    : 2:qemu-common-2.1.2-6.fc21.x86_64                                                9/12
-  Cleanup    : 2:qemu-img-2.1.2-6.fc21.x86_64                                                  10/12
-  Cleanup    : 2:libcacard-2.1.2-6.fc21.x86_64                                                 11/12
-  Cleanup    : 2:qemu-guest-agent-2.1.2-6.fc21.x86_64                                          12/12
-  Verifying  : 2:qemu-guest-agent-2.1.3-8.fc21.x86_64                                           1/12
-  Verifying  : 2:qemu-system-x86-2.1.3-8.fc21.x86_64                                            2/12
-  Verifying  : 2:libcacard-2.1.3-8.fc21.x86_64                                                  3/12
-  Verifying  : 2:qemu-kvm-2.1.3-8.fc21.x86_64                                                   4/12
-  Verifying  : 2:qemu-img-2.1.3-8.fc21.x86_64                                                   5/12
-  Verifying  : 2:qemu-common-2.1.3-8.fc21.x86_64                                                6/12
-  Verifying  : 2:qemu-kvm-2.1.2-6.fc21.x86_64                                                   7/12
-  Verifying  : 2:libcacard-2.1.2-6.fc21.x86_64                                                  8/12
-  Verifying  : 2:qemu-img-2.1.2-6.fc21.x86_64                                                   9/12
-  Verifying  : 2:qemu-guest-agent-2.1.2-6.fc21.x86_64                                          10/12
-  Verifying  : 2:qemu-system-x86-2.1.2-6.fc21.x86_64                                           11/12
-  Verifying  : 2:qemu-common-2.1.2-6.fc21.x86_64                                               12/12
-
-Updated:
-  libcacard.x86_64 2:2.1.3-8.fc21                   qemu-common.x86_64 2:2.1.3-8.fc21
-  qemu-guest-agent.x86_64 2:2.1.3-8.fc21            qemu-img.x86_64 2:2.1.3-8.fc21
-  qemu-kvm.x86_64 2:2.1.3-8.fc21                    qemu-system-x86.x86_64 2:2.1.3-8.fc21
-
-Complete!
+      Bugs  : 1151253 - User interface freezes when entering space character
+            : 1222894 - qemu: insecure temporary file use in /net/slirp.c
+            : 1222892 - CVE-2015-4037 qemu: insecure temporary file use
+Description : Insecure temporary file usage in slirp networking layer.
 ```
 
- 
+---
 
-Very important to get sure of the new updated pushed to the system is compatible with the running software and your production environment  **it may install a new version of the software**
+## 2. Applying Security Patches
 
-We will take later about backporting and advanced package verification
+### Apply All Available Security Updates
+
+To upgrade all installed packages that have an associated security advisory:
+
+```bash
+yum update --security
+```
+
+### Target a Specific Advisory (RHSA)
+
+To deploy patches for a designated advisory ID:
+
+```bash
+yum update --advisory=RHSA-2015:0291
+```
+
+### Target Specific CVEs or Bugzilla Tickets
+
+You can selectively apply patches addressing designated vulnerability identifiers:
+
+```bash
+yum update --cve=CVE-2015-4037
+# Or combine Bugzilla IDs and CVE identifiers
+yum update --bzs=1222892,1222894 --cves=CVE-2015-4037
+```
+
+---
+
+## 3. Best Practices for Production Environments
+
+1. **Verify Backported Patches:** Red Hat frequently backports security fixes into stable upstream package releases without bumping the major software version. This preserves API/ABI compatibility across enterprise environments.
+2. **Review Changelogs:** Inspect package changes prior to upgrading:
+   ```bash
+   rpm -q --changelog openssl | head -n 20
+   ```
+3. **Simulate Transactions:** Always test the update transaction first:
+   ```bash
+   yum update --security --assumeno
+   ```
