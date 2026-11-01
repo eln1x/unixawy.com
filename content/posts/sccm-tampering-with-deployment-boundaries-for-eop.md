@@ -1,187 +1,243 @@
 ---
-title: "SCCM Tampering with deployment boundaries for EoP"
+title: "SCCM: Tampering with Deployment Boundaries for Privilege Escalation"
 date: 2025-08-01T13:02:40+00:00
 url: "/sccm-tampering-with-deployment-boundaries-for-eop/"
 draft: false
-description: "In a large scale environment, software deployment automation provides efficiency for employees and the IT departments. Moreover, It solves existing challenges..."
+description: "An in-depth analysis of how automated software deployment mechanisms in Microsoft Endpoint Configuration Manager (SCCM / MEM) introduce local privilege escalation vectors via DLL hijacking, race conditions, and WMI triggering."
 categories: ["blog", "exploit-dev", "Security"]
 image: "/uploads/2026/02/image001.png"
 ---
 
-> In a large-scale environment, software deployment automation provides efficiency for employees and the IT departments. Moreover, It solves existing challenges but brings new ones. These challenges require adaptation from the IT department and the software vendors.
+> In large-scale enterprise environments, centralized software deployment automation provides tremendous operational efficiency for both employees and IT departments. However, delegating software installation self-service to unprivileged users introduces subtle security boundary assumptions that attackers can exploit to achieve local privilege escalation (`NT AUTHORITY\SYSTEM`).
 
-The purpose of this memo is to demonstrate that allowing a low-privilege user to install software should be carefully planned/tested. Because most software installers aren’t aware of the new deployment conditions, these new conditions introduce a new boundary that is possible to exploit in most installers.
+When standard enterprise users are permitted to initiate software installations on demand via **Software Center**, third-party installer packages are often executed within the `SYSTEM` security context. Because most commercial software installers were originally engineered assuming an interactive local administrator session rather than automated headless deployment, this architectural mismatch creates high-impact security vulnerabilities: DLL search-order hijacking, insecure temporary directory usage, and file-creation race conditions.
 
-**Existence Challenges for Software Deployment**
+---
 
-- the amount of 3rd party software and its updates
-- Installations often have to be run with Administrator account privileges
-- Allowing admins to share devices with employees raises privacy concerns
+## Executive Overview: The Deployment Problem
 
- **Large-scale environment and *Microsoft Endpoint Manager (MEM)***
+In enterprise environments with tens of thousands of managed endpoints:
+1. Users constantly require various third-party applications and regular updates.
+2. Granting local administrative privileges violates the principle of least privilege and introduces widespread corporate security risks.
+3. Manually dispatching IT support technicians for every installation or patch is operationally infeasible.
 
-- A secure and scalable way for application deployment
-- Low privilege users can request application deployment
-- *AppEnforce* and deployment properties for *MSIServer.exe*
+To bridge this gap, enterprise organizations rely on **Microsoft Endpoint Configuration Manager** (SCCM / MEM).
 
-**Software packaging challenges**
+```
++-------------------------------------------------------------+
+|                     ConfigMgr Server                        |
+|  - Packages & Applications defined                          |
+|  - AppEnforce execution policy configured                   |
++------------------------------+------------------------------+
+                               |
+                        SOAP / RPC Policy
+                               |
+                               v
++-------------------------------------------------------------+
+|                    Client Workstation                       |
+|  - User initiates install via Software Center (Unprivileged)|
+|  - CcmExec orchestrates deployment                          |
+|  - Installer executes as NT AUTHORITY\SYSTEM                |
++-------------------------------------------------------------+
+```
 
-- Running in a different context
+---
 
-- Dynamic Mapping for Application Data Folder
-- Security Controls during runtime
+## Intended Installation Model vs. Reality
 
-## Intended install/uninstall process
+In a typical desktop environment, software installers modify protected system paths (`C:\Program Files`, registry hives like `HKLM`, and system driver configurations). Consequently, installers require elevated permissions.
 
-Installations often have to be run with Administrator privileges because they update or modify parts of the system.
-
-Therefore, an Administrator is trusting an installer and its actions. Also, as we have administrative privilege, we are running in the same trust boundary as the system. We can go ahead and execute any actions to provision the device
+When a local administrator runs an installer manually, the user and the execution context reside within the same trust boundary.
 
 ![Regular home user starting installer with an Administrator account](/uploads/2026/02/image001.png)
-*Regular home user starting installer with an Administrator account*
+*Figure 1: Standard interactive installation running under an administrative session.*
 
-> *Regular home user starting installer with an Administrator account*
+### The ConfigMgr Architecture
 
-## Introduction to ConfigMgr (Server)
+With SCCM, administrative teams define deployment metadata describing how each application is provisioned across endpoints. Packages can include `.msi` installers, standalone `.exe` executables, or custom PowerShell wrappers:
 
-An organization with 10k+ endpoints and users demands third-party software for daily tasks. And authorizing administration privileges to employees is against corporate policy, Plus, manually handling every installation/uninstallation/update. Moreover, managing licensing and usage approval will not be a feasible job for a large-scale.
+- Package source location and hash validation
+- Command-line install and uninstall switches (e.g., `/qn`, `/silent`)
+- Detection rules and user experience settings
 
-The *Microsoft Endpoint Manager* comes to solve these corporate issues by
+![ConfigMgr Admin Provisioning an application for deployment](/uploads/2026/02/image002.png)
+*Figure 2: ConfigMgr Console application definition.*
 
-- Create a Deployment (package or application)
-- Security Configuration AppEnforce
+![ConfigMgr Admin Console with deployed apps](/uploads/2026/02/image003.png)
+*Figure 3: Deployed software packages available to endpoints.*
 
-Which results of software as service to employees and it is called *Software Center* under *Microsoft Endpoint Manager.*
+---
 
-> *In other words, “a non-admin user will be able to install, uninstall, upgrade software in his/her workstation.”*
+## The AppEnforce Boundary
 
-Create a Deployment (package or application)
+A critical deployment parameter in ConfigMgr is **Installation Behavior**:
 
-ConfigMgr Admins can define the metadata about the application, The metadata describes how each software will get provisioned inside the Endpoints, these software can be *msi* packages or *exe*, *PowerShell script* also you can mix and match.
+1. **User Context (`Install for user`):** The installer executes in the security context of the logged-on unprivileged user.
+2. **Machine Context (`Install for system`):** The installer executes under `NT AUTHORITY\SYSTEM`.
 
-- Installation file content location
+![ConfigMgr Admin enforcing the security context for an application](/uploads/2026/02/image004.png)
+*Figure 4: Enforcing the installation context (User vs. System).*
 
-- Install/Uninstall commands.
+Because standard commercial installers attempt to write to `Program Files` or `HKLM`, running them in **User Context** typically fails immediately with error code `0x800702E4` (*The requested operation requires elevation*):
 
-- Installation behavior and User Experience
+![Endpoint Manager error while trying to install exe with AppEnforce User](/uploads/2026/02/image005.png)
+*Figure 5: Failure when deploying administrative installers under User context.*
 
-![](/uploads/2026/02/image002.png)
-*ConfigMgr Admin Provisioning an application for deployment*
+As a result, SCCM administrators configure almost all applications to deploy under the **System** context (`Install for system`).
 
-![](/uploads/2026/02/image003.png)
-*ConfigMgr Admin’s Console with two deployed apps*
+### The Client Experience
 
-#### App enforcement environment
+Endpoints query the SCCM Management Point over SOAP/WMI, downloading catalog metadata and populating **Software Center**:
 
-*AppEnforce “Installation Behavior” is a part of the deployment metadata properties that instructs the EndPoint  to communicate the deployment properties to the windows installer service to do the following actions.*
+![Endpoint Manager Software Center catalog](/uploads/2026/02/image006.png)
+*Figure 6: Endpoint Software Center available to low-privileged users.*
 
-.
+![Software Center application details view](/uploads/2026/02/image007.png)
+*Figure 7: An unprivileged employee initiates an approved installation on demand.*
 
-1)    Prevent users from interacting with the UI during the installation runtime
+When a user clicks **Install**:
+1. The installation binaries are staged locally into `C:\Windows\ccmcache\<id>\`.
+2. The `CcmExec` service communicates deployment parameters to the Windows Installer service (`msiserver.exe`) or spawns the target executable directly.
+3. The installer runs elevated as **`NT AUTHORITY\SYSTEM`** without prompting for UAC credentials.
 
-2)    Enforce the installer to run in a controlled context
+---
 
-2.a)    **User Context** enforces the installer to run as the requester (employee)
+## The Root Vulnerability: The Exposed Temp Boundary
 
-2.b)    **Machine Context** the installer will run as SYSTEM
+Most setup packages assume that when they run elevated, they are executing within an interactive administrator's profile. They rely on the Windows installer property `CommonAppDataFolder` or user `%TEMP%` directories to extract payloads, load helper DLLs, and run temporary scripts.
 
-![](/uploads/2026/02/image004.png)
-*ConfigMgr Admin enforcing the security context for an application*
+![Deployment assumption while running the installer](/uploads/2026/02/image008.png)
+*Figure 8: Traditional assumptions vs. SCCM background deployment.*
 
-The default option is to run as *SYSTEM*, Because of the Integrity level that is required by the installers, Most of the application if you enforced it to install for user will raise an error *0x800702E4* (elevated privilege is needed), and forces the admins to install for SYSTEM
+When running as `NT AUTHORITY\SYSTEM`, there is no standard user profile directory. Instead, the process maps `%TEMP%` and `%TMP%` directly to:
 
-![](/uploads/2026/02/image005.png)
-*Endpoint Manager error while trying to install exe with AppEnforce User*
+```cmd
+C:\Windows\Temp
+```
 
-### Endpoint Manager (Client)
+By default in Windows, unprivileged users have write and directory-creation permissions inside `C:\Windows\Temp`. When an installer running as `SYSTEM` extracts files to `C:\Windows\Temp` or searches that directory for dynamic dependencies, **unprivileged users can manipulate those files to achieve arbitrary code execution as SYSTEM**.
 
-The client uses SOAP UI to communicate with the *ConfigMgr Server* to download the application list with its latest metadata. then it will populate the Software Center. Finally, the employees can choose which software they need from a software center and get it provisioned automatically.
+![Deployment execution running under SYSTEM context](/uploads/2026/02/image009.png)
+*Figure 9: Process execution tree resolving under SYSTEM.*
 
-![](/uploads/2026/02/image006.png)
+---
 
-![](/uploads/2026/02/image007.png)
-*Endpoint Manager Software Center*
+## Privilege Escalation Case Studies
 
-#### What just happened?
+### Case Study 1: Microsoft Office Installer & DLL Search-Order Hijacking
 
-An employee with absolutely no privilege requested an application from the *Software Center*.
+When Microsoft Office's `setup.exe` runs under Machine Context via SCCM, it unpacks and launches auxiliary processes such as `ose00000.exe` out of `C:\Windows\Temp\`.
 
-This application got copied to his/her device inside *c:\windows\ccm\ccmcahe\.* A process named *CCMExec* communicates the setup properties to *the Windows Installer Service (msiserver.exe*), executes the installation command with the appropriate *AppEnforce*, and provision the device while he/she is enjoying (Administrator Free) coffee.
+During execution, Process Monitor reveals that the process attempts to dynamically load libraries using standard Windows DLL search order resolution, probing `C:\Windows\Temp\` before system directories:
 
-### The exposed boundary
+![Procmon logs monitoring the installer to identify vulnerable actions](/uploads/2026/02/image010.png)
+*Figure 10: Process Monitor capturing missing DLL lookups in C:\Windows\Temp.*
 
-This issue resides that most software packages assume it will run with the administrator profile and instruct the installer to uses Application Data Folder by mapping *CommonAppDataFolder* Property as a protected area to read/write/execute from.
+Because any low-privileged user can write to `C:\Windows\Temp\`, an attacker simply plants a malicious DLL (such as `version.dll`):
 
-![](/uploads/2026/02/image008.png)
-*Deployment assumption while running the installer*
+![Planting malicious DLL into C:\Windows\Temp\version.dll](/uploads/2026/02/image011.jpg)
+*Figure 11: Pre-staging a malicious payload in C:\Windows\Temp.*
 
-But during a deployment, we are running *NT AUTHORITY\SYSTEM*, a built-in Windows Account, account that you can’t look up its name and go ahead and use its *AppData* folder, therefore the installers are forced to use *c:\windows\temp* instead of *~~c:\user\SYSTEM\AppData~~*.
+When the unprivileged user triggers the Office installation from Software Center, `setup.exe` loads the malicious DLL as `NT AUTHORITY\SYSTEM`.
 
-![](/uploads/2026/02/image009.png)
-*Deployment while running under SYSTEM*
+---
 
-### Elevation of Privilege Samples
+### Case Study 2: WinZip Installer & File Creation Race Condition
 
-#### Microsoft Office Installer: DLL Hijacking EoP
+During the unattended installation of WinZip, `MsiExec.exe` (running as `SYSTEM`) writes an auxiliary utility named `CloseFAH.exe` into `C:\Windows\Temp\` and executes it shortly thereafter.
 
-Microsoft Office installer *setup.exe* Must run with Machine Context because it requires Administrator Privilege. Once *CCMExec* initiates *setup.exe* as *SYSTEM*, it writes and executes *ose00000.exe* from *c:\windows\temp*. While it uses Dynamic Link Library, it falls into DLL Order hijacking attack and tries to resolve the DLLs from windows temp.
+The window between when the write handle is closed and when the process is executed is approximately **200 milliseconds**—more than enough time to win a local race condition via file system monitoring APIs (`ReadDirectoryChangesW`) or Opportunistic Locks (OpLocks):
 
-![](/uploads/2026/02/image010.png)
-*Procmon logs, monitoring the installer to identify the vulnerable actions*
+1. The exploit monitors `C:\Windows\Temp\` for the creation of `CloseFAH.exe`.
+2. As soon as the handle is released, the exploit overwrites `CloseFAH.exe` with a custom payload.
+3. The Windows Installer executes the modified binary as `SYSTEM`.
 
-By planting a malicious DLLs in the temp, *of course none privileged users can write to the temp*. we can get our code executed in the SYSTEM context.
+![Handling exceptions during the race condition attack](/uploads/2026/02/image012.png)
+*Figure 12: Catching file-access exceptions while racing the SYSTEM process.*
 
-![](/uploads/2026/02/image011.jpg)
-*Planting malicious DLL into c:\windows\temp\version.dll*
+![Successfully writing pwn.txt with SYSTEM privileges](/uploads/2026/02/image013.jpg)
+*Figure 13: Proof-of-concept payload execution demonstrating full SYSTEM compromise.*
 
-#### WinZip Race Condition EoP
+---
 
-During the setup of WinZip, I found that the *MsiExec.exe* while it runs under the *SYSTEM* account, it tries to write and execute *CloseFAH.exe* file inside windows temp. The time average between closing the write operation and running the file is *~200 milliseconds*. It is sufficient to implement a race condition attack, overwrite the *CloseFAH.exe* with our malicious code and get it executed under *SYSTEM* account permissions.
+## Red Team Methodology: Discovery and On-Demand Triggering
 
-![](/uploads/2026/02/image012.png)
-*Unauthorized Exception to avoid a crash while Racing the SYSTEM process*
+Once an attacker secures an initial foothold on a workstation, this deployment architecture can be systematically exploited:
 
-![](/uploads/2026/02/image013.jpg)
-*Successfully writing to c:\pwn.txt with SYSTEM privileges*
+### 1. Identify ConfigMgr Presence
 
-### Red Team Operational Procedures
+Check for the active `CcmExec` service:
 
-the purpose of this procedure to demonstrate how we can exploit these vulnerabilities through a command-and-control session
+```powershell
+Get-Process -Name CcmExec
+Get-Service -Name CcmExec
+```
 
-During engagement, when you encounter a foothold in a compromised machine, you can verify if the *Software Center* is installer by looking into the process list and Identify the client CCMExec.exe
+### 2. Inspect AppEnforce.log
 
-If the device is provisioned with *CCM*, we can locate the installation and behavior enforcement log file inside *c:\windows\CCM\logs\AppEnforce.log*, *AppEnforce* log file can give us a decent amount of information that will allow us to deploy an attack against the compromised device.
+Review `C:\Windows\CCM\Logs\AppEnforce.log` for installed and available deployment actions. This log records:
+- Package GUIDs and application IDs
+- Execution contexts (`Machine` vs. `User`)
+- Complete command-line strings for installation and uninstallation
+- Local cache locations (`C:\Windows\ccmcache\<id>\`)
 
-- Unique Identifier for installation & uninstallation
+```text
++++ Starting Install enforcement for App DT "Vendor Software - Windows Installer" ...
+    Context: Machine
+    Command line: "msiexec.exe" /i "vendor.msi" /qn
+    Content path: C:\Windows\ccmcache\3e\
+```
 
-- Execution Context
+If administrators use custom PowerShell scripts or wrappers rather than pure MSI packages, additional DLL search-order and unquoted service path opportunities frequently emerge:
 
-- command line to execute the install and the uninstall
+![PowerShell wrapper executed by CCMExec](/uploads/2026/02/image014.png)
+*Figure 14: Inspecting script wrappers in AppEnforce.log.*
 
-- Cache folder, which includes the setup files
+### 3. Replicate and Profile Offline
 
-If the system admins like to use *PowerShell* to initiate the setup instead of direct *MsiExec.exe* command. This will position *PowerShell* before *MsiExec.exe* and introduce more DLL Hijacking opportunities.
+Exfiltrate the package contents from `C:\Windows\ccmcache\<id>\` to an offline analysis machine. In an elevated command prompt (using `psexec -i -s cmd.exe` to simulate `SYSTEM`), launch the installation switch while running **Process Monitor** with the following filters:
 
-![](/uploads/2026/02/image014.png)
+```text
+Operation is CreateFile
+Operation is LoadImage
+Path contains .dll
+Path contains .exe
+Result is NAME NOT FOUND
+```
 
-After we map applications to cache folders, we can go ahead and exfiltrate the installer files from the compromised device.
+### 4. Trigger Deployment via WMI
 
-Then in the attacker device run *psexec -i -s cmd.exe* to simulating *SYSTEM* permission and initiates the setup command from the newly opened window and uses *procmon.exe* to identify vulnerable operations like
+Rather than waiting for scheduled maintenance windows or interacting with the graphical Software Center UI, an attacker can trigger the installation or uninstallation directly from a C2 beacon using the `ROOT\ccm\ClientSDK` WMI namespace:
 
-Operation is CreateFile Operation is LoadImage Path contains .cpl Path contains .dll Path contains .drv Path contains .exe Path contains .ocx Path contains .scr Path contains .sys
+```powershell
+# Query available Software Center applications
+Get-WmiObject -Namespace "root\ccm\clientsdk" -Class CCM_Application
 
-Once we have planted our malicious inside the victim device, we can utilize the *WMI* namespace *\root\ccm\clientSDK*. to initiate the installation or uninstallation to trigger the vulnerable action.
+# Trigger installation on-demand via CCM_Application method
+$app = Get-WmiObject -Namespace "root\ccm\clientsdk" -Query "SELECT * FROM CCM_Application WHERE Id='Application_GUID'"
+Invoke-WmiMethod -Namespace "root\ccm\clientsdk" -Class CCM_Application -Name Install -ArgumentList @($app.Id, $app.Revision, $True, 0, "Normal", $False)
+```
 
-![](/uploads/2026/02/image015.png)
+![Triggering deployment via WMI ClientSDK](/uploads/2026/02/image015.png)
+*Figure 15: Querying client SDK WMI classes.*
 
-![](/uploads/2026/02/image016.png)
+![Invoking WMI install method](/uploads/2026/02/image016.png)
+*Figure 16: Executing installation programmatically.*
 
-![](/uploads/2026/02/image017.png)
+![Verification of triggered execution](/uploads/2026/02/image017.png)
+*Figure 17: Process invocation occurring under SYSTEM context.*
 
-### Protect and Detect
+---
 
-- AppEnforce user context if possible.
+## Defensive Recommendations & Hardening
 
-- Consider absolute paths.
+To mitigate privilege escalation vectors through automated deployment boundaries:
 
-- Ensure post-install, post-uninstall scripts/apps is protected
+1. **Restrict `C:\Windows\Temp` Permissions:**
+   Modify NTFS access control lists (ACLs) on `C:\Windows\Temp` so unprivileged users cannot read or execute files placed by other users/SYSTEM, or restrict directory creation rights.
+2. **Audit Packaging Standards:**
+   Ensure MSI and third-party packaging configurations do not extract executables or dynamic libraries into shared, unprivileged-writable directories. Use dedicated, securely ACL'd subdirectories under `%ProgramData%`.
+3. **Use Absolute Paths in Deployment Scripts:**
+   When wrapping installers in PowerShell or batch files, always supply fully qualified paths for binaries and working directories.
+4. **Endpoint Behavioral Monitoring:**
+   Configure EDR rules to flag low-privileged users writing executable files (`.dll`, `.exe`) into `C:\Windows\Temp`, as well as parent-child anomalies where `CcmExec.exe` or `msiexec.exe` spawns processes that load newly written DLLs from temporary storage.
