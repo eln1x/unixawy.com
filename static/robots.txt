@@ -1,0 +1,17 @@
+User-agent: *
+Allow: /
+
+# Allow AI Search & Indexing bots
+User-agent: GPTBot
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: CCBot
+Allow: /
+
+Sitemap: https://www.unixawy.com/sitemap.xml
