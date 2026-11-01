@@ -1,45 +1,64 @@
 ---
-title: "Files Encrypt with GPG"
+title: "Encrypting and Decrypting Files with GnuPG (GPG)"
 date: 2014-11-24T15:20:24+00:00
 url: "/files-encrypt-with-gpg/"
 draft: false
-description: "GPG = Gnu Privacy Guard To secure file from unauthorised access with the password in Linux/Unix is very simple method :) lets assume we have a secure file with..."
-categories: ["Bash", "blog", "Firewall", "Linux", "Security"]
+description: "A quick practical guide to symmetric and asymmetric file encryption using GnuPG (GPG) for secure transmission and storage in Linux."
+categories: ["Linux", "Security", "Cryptography"]
+tags: ["linux", "gpg", "gnupg", "encryption", "security", "privacy"]
 ---
 
-GPG = Gnu Privacy Guard
+**GnuPG (GPG)** is a complete implementation of the OpenPGP standard (RFC 4880). It allows you to encrypt data either symmetrically (using a shared passphrase) or asymmetrically (using public/private key pairs).
 
-To secure file from unauthorised access with the password in Linux/Unix is very simple method :)
+When you need to protect sensitive documents (such as financial records, credentials, or backups) before sending them over email or untrusted channels, symmetric GPG encryption provides strong, zero-infrastructure security.
 
-lets assume we have a secure file with some financials stuff called orders.xls
+---
 
-and we want to email it to our partners  and we  want to get sure just he is the only one will be able to read it
+### Symmetric Encryption with a Passphrase
 
-first we will encrypt the file with password
+To encrypt a file symmetrically using a password:
 
-gpg -c orders.xls
-
+```bash
+gpg --symmetric --cipher-algo AES256 orders.xls
 ```
-gpg -c orders.xls 
-Enter passphrase: *******
-Repeat passphrase: ******
-```
+*(Shortcut: `gpg -c orders.xls`)*
 
-it will create a file orders.xls.gpg   this file that will be sent to our partners
+GPG prompts you twice to enter a strong passphrase. It produces an encrypted binary output file:
+`orders.xls.gpg`
 
-notice the gig extension in the end of the file
+> **Security Tip:** Always specify `--cipher-algo AES256` to override legacy default ciphers (such as CAST5) with modern, robust AES encryption.
 
-this file will be only decrypted if  our partners enter the correct password
+---
 
-decrypt the file with password
+### Decrypting the File
 
-```
+The recipient can decrypt the file by running GPG without arguments:
+
+```bash
+gpg -d orders.xls.gpg > orders.xls
+# Or simply:
 gpg orders.xls.gpg
-gpg: CAST5 encrypted data
-Enter passphrase: ******
-gpg: CAST5 encrypted data
-gpg: encrypted with 1 passphrase
-gpg: WARNING: message was not integrity protected
+```
 
-it will create the clean orders.xls file :)
+Upon providing the correct passphrase, GPG decrypts and verifies the ciphertext, restoring the original plaintext document.
+
+---
+
+### ASCII-Armored Encryption (Text-Safe)
+
+If you need to send encrypted content over text-only channels (chat, email bodies, paste sites) without handling binary files, use the `-a` / `--armor` flag:
+
+```bash
+gpg --symmetric --armor --cipher-algo AES256 orders.xls
+```
+
+This generates an ASCII-armored file (`orders.xls.asc`) containing a text block:
+
+```text
+-----BEGIN PGP MESSAGE-----
+Version: GnuPG v2
+
+jA0EBwMC...
+...
+-----END PGP MESSAGE-----
 ```

@@ -1,112 +1,79 @@
 ---
-title: "IPtables PREROUTING, POSTROUTING  for mixed interfaces via DNAT & SNAT"
+title: "Advanced iptables: PREROUTING and POSTROUTING with DNAT and SNAT"
 date: 2016-07-14T16:08:25+00:00
 url: "/iptables-prerouting-postrouting/"
 draft: false
-description: "Traffic Forwarding with iptables Let’s get straight to the point. We are looking at two specific networking scenarios: 1. Simple Traffic Forwarding: Routing..."
-categories: ["blog", "Firewall", "Linux", "tech"]
+description: "A guide to implementing complex traffic redirection and routing across multi-homed Linux servers using Netfilter PREROUTING (DNAT) and POSTROUTING (SNAT/MASQUERADE)."
+categories: ["Linux", "Networking", "Security"]
+tags: ["linux", "iptables", "netfilter", "dnat", "snat", "routing", "sysadmin"]
 ---
 
-## Traffic Forwarding with iptables
+When deploying jump hosts, transparent proxies, or network bridges across multi-homed Linux systems, standard routing tables are often insufficient. Using the Linux Netfilter framework via `iptables`, you can manipulate packets at both ingress (**PREROUTING**) and egress (**POSTROUTING**).
 
-Let’s get straight to the point. We are looking at two specific networking scenarios:
+---
 
-1. **Simple Traffic Forwarding:** Routing traffic from a specific Source IP through our server to a new destination.
+### Scenario 1: Basic Traffic Forwarding via DNAT and MASQUERADE
 
-2. **Interface-Specific Forwarding:** Routing traffic through a specific network interface/IP on a multi-homed server.
+In this setup, our Linux server acts as an intermediary bridge forwarding traffic from a client to a remote backend service:
 
-The `iptables` tool uses the **PREROUTING** chain within the **NAT** table to intercept and modify packets as they enter the system, before any routing decisions are made.
+- **Client Source IP:** `198.51.100.12`
+- **Intermediary Gateway (Our Server):** `203.0.113.30`
+- **Final Backend Destination:** `192.0.2.84`
 
-### Scenario 1: Basic DNAT Forwarding
-
-In this scenario, we want to redirect traffic coming from a specific source to a new destination via our server.
-
-**The Setup:**
-
-- **Source IP:** `191.114.119.12`
-
-- **Our Server IP:** `27.39.03.30`
-
-- **Final Destination IP:** `89.23.39.84`
-
-**The Flow:**
-
-`191.114.119.12` $\leftrightarrow$ `27.39.03.30` (Our Box) $\leftrightarrow$ `89.23.39.84`
-
-**The Commands:**
-
-To change the destination of the incoming packet:
-
-Bash
-
-```
-iptables -t nat -A PREROUTING -s 191.114.119.12 -j DNAT --to-destination 89.23.39.84
+```text
+Client [198.51.100.12] ──► Gateway [203.0.113.30] ──► Backend [192.0.2.84]
 ```
 
-- **-t nat**: Specifies the NAT table (used for translating source or destination fields).
+#### Step 1: Destination NAT in PREROUTING
+Intercept incoming packets destined for our gateway and rewrite the destination IP before routing lookup occurs:
 
-- **-A PREROUTING**: Appends the rule to the PREROUTING chain.
-
-- **-s**: Defines the Source IP.
-
-- **-j DNAT**: The "jump" target; performs Destination Network Address Translation.
-
-- **--to-destination**: Defines the final destination.
-
-To ensure the destination server replies back to our box (rather than trying to reply directly to the source), we use **MASQUERADE**:
-
-Bash
-
+```bash
+sudo iptables -t nat -A PREROUTING -s 198.51.100.12 -j DNAT --to-destination 192.0.2.84
 ```
-iptables -t nat -A POSTROUTING -j MASQUERADE
+
+#### Step 2: Source NAT / MASQUERADE in POSTROUTING
+To ensure the backend server (`192.0.2.84`) sends return replies back to our gateway rather than attempting to route directly to the client, rewrite the source address to the gateway's outbound interface IP:
+
+```bash
+sudo iptables -t nat -A POSTROUTING -d 192.0.2.84 -j MASQUERADE
 ```
 
 ---
 
-### Scenario 2: SNAT with Multiple Interfaces
+### Scenario 2: Policy Routing and SNAT on Multi-Homed Servers
 
-If your server has multiple interfaces and you want traffic to exit through a specific IP (e.g., `eth1`), you need to use **SNAT** (Source NAT).
+If your server has multiple physical or virtual network interfaces and you must guarantee outbound traffic exits using a specific IP:
 
-**The Setup:**
+- `eth0`: `203.0.113.30` (Primary Management)
+- `eth1`: `203.0.113.45` (Dedicated Egress IP)
+- `eth2`: `203.0.113.90` (Private Storage Network)
 
-- **eth0:** `27.39.03.30`
+#### Enforcing Outbound Egress IP via SNAT
+To force all forwarded traffic destined for `192.0.2.84` to exit with source IP `203.0.113.45`:
 
-- **eth1:** `27.39.04.5`
-
-- **eth2:** `27.39.24.1`
-
-**The Command:**
-
-To force traffic destined for `89.23.39.84` to leave via the `eth1` IP:
-
-Bash
-
-```
-iptables -t nat -I POSTROUTING -d 89.23.39.84 -j SNAT --to 27.39.04.5
+```bash
+sudo iptables -t nat -I POSTROUTING -d 192.0.2.84 -j SNAT --to-source 203.0.113.45
 ```
 
-**The Logic:**
-
-We use the **POSTROUTING** chain because this happens just as the packet is leaving the server. By using **SNAT**, we rewrite the source address to `27.39.04.5`.
-
-**The Updated Flow:**
-
-`191.114.119.12` $\leftrightarrow$ `27.39.03.30` $\leftrightarrow$ **`27.39.04.5`** $\leftrightarrow$ `89.23.39.84`
+By placing this rule in **POSTROUTING**, the kernel alters the packet source header at the final stage before transmission onto the wire.
 
 ---
 
-### Final Step: Enable Kernel Forwarding
+### Enabling Kernel Packet Forwarding
 
-None of the rules above will work unless the Linux kernel is allowed to pass packets between interfaces. You must enable IP forwarding:
+By default, the Linux kernel drops packets not destined for local sockets. You must enable IP forwarding:
 
-Bash
+```bash
+# Apply dynamically
+sudo sysctl -w net.ipv4.ip_forward=1
 
-```
-<span class="hljs-comment"># To apply immediately:</span>
-<span class="hljs-built_in">echo</span> 1 > /proc/sys/net/ipv4/ip_forward
-
-<span class="hljs-comment"># To make it permanent, edit /etc/sysctl.conf and set:</span>
-net.ipv4.ip_forward = 1
+# Persist across reboots in /etc/sysctl.d/99-ipforward.conf:
+echo "net.ipv4.ip_forward = 1" | sudo tee /etc/sysctl.d/99-ipforward.conf
 ```
 
-Happy networking!
+Verify that the `FORWARD` filter chain permits the traffic:
+
+```bash
+sudo iptables -A FORWARD -m state --state RELATED,ESTABLISHED -j ACCEPT
+sudo iptables -A FORWARD -d 192.0.2.84 -j ACCEPT
+```

@@ -1,143 +1,91 @@
 ---
-title: "Secure/Lock accounts with PAM tally2"
+title: "Account Lockout on Failed Logins with pam_tally2 / pam_faillock"
 date: 2015-08-05T00:50:28+00:00
 url: "/securelock-accounts-with-pam-tally2/"
 draft: false
-description: "pam tally2 is a PAM module to allow interaction in users interfaces on numbers of failed login attempt it can reset count on success, can deny access if too..."
-categories: ["blog", "Linux", "Security", "tech"]
+description: "How to configure PAM to automatically lock accounts after repeated failed login attempts across SSH, consoles, and TTYs using pam_tally2."
+categories: ["Linux", "Security"]
+tags: ["linux", "pam", "pam_tally2", "pam_faillock", "brute-force", "hardening"]
 ---
 
-pam_tally2 is a PAM module to allow interaction in users interfaces on numbers of failed login attempt it can reset count on success, can deny access if too many attempts fail.
+Unthrottled authentication services are susceptible to online credential brute forcing and password spraying attacks. While tools like `fail2ban` monitor application logs to block IP addresses at the firewall layer, PAM modules enforce account lockouts at the OS level across all authentication entry points (SSH, TTY consoles, display managers, and `su`).
 
-this module is unique because it  not just reflect remote connection but also reflect the ttys and any system login method as it uses PAM
+Historically handled by `pam_tally2` (and superseded in RHEL 8+ / Debian 11+ by `pam_faillock`), this module tracks failed attempts and locks accounts for a specified duration.
 
-example from tty:
+---
 
-```
-Centos release 6.5 (Final)
-Kernel 2.6.32-431.el6.x86 on an x86_64
-centos-6 login:n1x
-Account locked due to 8 failed logins
-Password:
-```
+### Key Configuration Parameters
 
- 
+| Parameter | Purpose | Example |
+| :--- | :--- | :--- |
+| `deny=<N>` | Lock account after `N` failed attempts | `deny=5` |
+| `unlock_time=<seconds>` | Duration before account automatically unlocks | `unlock_time=900` (15 mins) |
+| `even_deny_root` | Apply lockout policy to the `root` user | Included |
+| `root_unlock_time=<seconds>` | Dedicated unlock duration for `root` | `root_unlock_time=300` (5 mins) |
 
-some parameters
+> **Warning:** When using `even_deny_root`, ensure `root_unlock_time` is configured to avoid permanent denial-of-service on local consoles.
 
-1. deny used to block access of numbers of failed attempts
-2. unlock_time used to set a time duration for blocked access in seconds
-3. even_deny_root root is excluded by default, you set this parameter to tell tally2 count for root too
-4. root_unlock_time same as unlock_time but  for root only
+---
 
- 
+### Configuring PAM Stacks
 
-example PAM config:
+Account lockout requires directives in two separate PAM management groups:
+1. **`auth`**: Increments the failure counter when authentication fails, or resets it upon success.
+2. **`account`**: Checks if the failure count exceeds `deny` and refuses access before verifying other credentials.
 
-```
-auth        required      pam_tally2.so deny=2 unlock_time=30 even_deny_root root_unlock_time=10
-```
+#### 1. Local TTY Logins (`/etc/pam.d/system-auth`)
 
- 
-
-to reflect the tty access we have to configure our tally2 module in /etc/pam.d/system-auth
-
- 
-
-here is our final layout for system-auth
-
-```bash
-#%PAM-1.0
-# This file is auto-generated.
-# User changes will be destroyed the next.
-
+```text
 auth        required      pam_env.so
-auth        required      pam_tally2.so deny=2 unlock_time=30 even_deny_root root_unlock_time=10
+auth        required      pam_tally2.so deny=5 unlock_time=900 even_deny_root root_unlock_time=300
 auth        sufficient    pam_unix.so nullok try_first_pass
-auth        requisite     pam_succeed_if.so uid >= 500 quiet
 auth        required      pam_deny.so
 
 account     required      pam_tally2.so
 account     required      pam_unix.so
-account     sufficient    pam_localuser.so
-account     sufficient    pam_succeed_if.so uid < 500 quiet
 account     required      pam_permit.so
-
-password    requisite     pam_cracklib.so try_first_pass retry=3 type=
-password    sufficient    pam_unix.so sha512 shadow nullok try_first_pass use_authtok
-password    required      pam_deny.so
-
-session     optional      pam_keyinit.so revoke
-session     required      pam_limits.so
-session     [success=1 default=ignore] pam_succeed_if.so service in crond quiet use_uid
-session     required      pam_unix.so
-~
 ```
 
-to reflect the  remote connections  that use password example sshd
+#### 2. Remote SSH Logins (`/etc/pam.d/password-auth`)
 
-we config our /etc/pam.d/password-auth with tally
+Mirror the configuration in `/etc/pam.d/password-auth` to ensure remote SSH sessions are constrained by the same lockout counters:
 
-```bash
-#%PAM-1.0
-# This file is auto-generated.
-# User changes will be destroyed the next time authconfig is run.
-auth        required      pam_env.so
-auth        required      pam_tally2.so deny=2 unlock_time=30 even_deny_root root_unlock_time=10
-auth        sufficient    pam_unix.so nullok try_first_pass
-auth        requisite     pam_succeed_if.so uid >= 500 quiet
-auth        required      pam_deny.so
-
+```text
+auth        required      pam_tally2.so deny=5 unlock_time=900 even_deny_root root_unlock_time=300
 account     required      pam_tally2.so
-account     required      pam_unix.so
-account     sufficient    pam_localuser.so
-account     sufficient    pam_succeed_if.so uid < 500 quiet
-account     required      pam_permit.so
-
-password    requisite     pam_cracklib.so try_first_pass retry=3 type=
-password    sufficient    pam_unix.so sha512 shadow nullok try_first_pass use_authtok
-password    required      pam_deny.so
-
-session     optional      pam_keyinit.so revoke
-session     required      pam_limits.so
-session     [success=1 default=ignore] pam_succeed_if.so service in crond quiet use_uid
-session     required      pam_unix.so
 ```
 
- 
+---
 
-notice that we have done 2 things  one in auth interface that verifies the account and 2nd one in the account interface to reflect the permissions of the account
+### Audit Logs in `/var/log/secure`
 
- 
+When an account exceeds the threshold, PAM logs the lockout event and refuses connection:
 
-here is some output of /var/log/secure
-
- 
-
-```
-Aug  5 02:09:53 centos-6 login: pam_tally2(login:auth): user root (0) tally 3, deny 2
-Aug  5 02:13:37 centos-6 sshd[12921]: pam_tally2(sshd:auth): user root (0) tally 10, deny 2
+```text
+Aug  5 02:09:53 centos-6 login: pam_tally2(login:auth): user operator (1001) tally 6, deny 5
+Aug  5 02:13:37 centos-6 sshd[12921]: pam_tally2(sshd:auth): user operator (1001) tally 7, deny 5
 ```
 
-as you see tally2 kills the connection :)
+---
 
-for manual interaction with tally2 counter
+### Monitoring and Resetting Locked Accounts
 
-there is a command called pam_tally2
+Administrators can inspect and reset lockout tallies using the `pam_tally2` utility:
 
+#### View current failed login tallies:
 ```bash
-[root@centos-6 ~]# pam_tally2
-Login           Failures Latest failure     From
-root                2    08/05/15 02:11:45  192.168.72.1
+sudo pam_tally2
+# Login     Failures Latest failure     From
+# operator         6 08/05/26 02:11:45  192.168.72.1
 ```
 
-to remove a counter failures
-
+#### Inspect a specific user:
 ```bash
-[root@centos-6 ~]# pam_tally2 -r -u root
-Login           Failures Latest failure     From
-root               10    08/05/15 02:13:37  192.168.72.1
-[root@centos-6 ~]# pam_tally2 -r -u root
-Login           Failures Latest failure     From
-root                0
+sudo pam_tally2 -u operator
 ```
+
+#### Manually unlock and reset an account counter:
+```bash
+sudo pam_tally2 -u operator --reset
+```
+*(On modern systems running `pam_faillock`, use `faillock --user operator --reset`).*

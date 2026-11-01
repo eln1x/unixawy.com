@@ -1,161 +1,107 @@
 ---
-title: "Linux Disk Encryption with LUKS"
+title: "Block-Level Disk Encryption on Linux with LUKS and dm-crypt"
 date: 2015-07-05T02:50:28+00:00
 url: "/linux-disk-encryption-with-luks/"
 draft: false
-description: "today we going to make an encrypted disk partition list prepare our partition I have a new disk in /dev/sdb I will create a partition 100 on it with fdisk our..."
-categories: ["blog", "Linux", "Security"]
+description: "A complete step-by-step walkthrough of formatting, unlocking, mounting, and securing encrypted Linux block partitions using cryptsetup and LUKS."
+categories: ["Linux", "Security"]
+tags: ["linux", "encryption", "luks", "dm-crypt", "storage", "privacy"]
 ---
 
-today we going to make an encrypted disk partition
+**Linux Unified Key Setup (LUKS)** is the standard specification for Linux block-device encryption. Implemented via the `dm-crypt` kernel module and managed with `cryptsetup`, LUKS provides transparent disk encryption below the filesystem layer.
 
-list prepare our partition
+This guide walks through creating an encrypted partition on a storage device, initializing the LUKS header, formatting the decrypted mapping, and managing its mount lifecycle.
 
-I have a new disk in  /dev/sdb
+---
 
-I will create a partition 100 on it with fdisk
+### Step 1: Partitioning the Target Disk
+
+Identify your target drive (e.g., `/dev/sdb`) using `lsblk` or `fdisk -l`. Use `fdisk` or `parted` to create a partition:
 
 ```bash
-[root@localhost ~]# fdisk /dev/sdb
+sudo fdisk /dev/sdb
+```
+- Type `n` for a new primary partition.
+- Specify partition size (e.g., `+100M` or full disk capacity).
+- Type `w` to write the partition table.
 
-Welcome to fdisk (util-linux 2.25.2).
-Changes will remain in memory only, until you decide to write them.
-Be careful before using the write command.
+Our new partition is now available at `/dev/sdb1`.
 
-/dev/sdb: device contains a valid 'crypto_LUKS' signature, it's strongly recommended to wipe the device by command wipefs(8) if this setup is unexpected to avoid possible collisions.
+---
 
-Device does not contain a recognized partition table.
-Created a new DOS disklabel with disk identifier 0xc0e7edd0.
+### Step 2: Initializing the LUKS Container (`luksFormat`)
 
-Command (m for help): p
-Disk /dev/sdb: 1 GiB, 1073741824 bytes, 2097152 sectors
-Units: sectors of 1 * 512 = 512 bytes
-Sector size (logical/physical): 512 bytes / 512 bytes
-I/O size (minimum/optimal): 512 bytes / 512 bytes
-Disklabel type: dos
-Disk identifier: 0xc0e7edd0
+Initialize the partition as an encrypted LUKS container:
 
-Command (m for help): n
-Partition type
-   p   primary (0 primary, 0 extended, 4 free)
-   e   extended (container for logical partitions)
-Select (default p): p
-Partition number (1-4, default 1):
-First sector (2048-2097151, default 2048):
-Last sector, +sectors or +size{K,M,G,T,P} (2048-2097151, default 2097151): +100M
-
-Created a new partition 1 of type 'Linux' and of size 100 MiB.
-
-Command (m for help): w
-The partition table has been altered.
-Calling ioctl() to re-read partition table.
-Syncing disks.
-
-[root@localhost ~]# fdisk /dev/sdb
-
-Welcome to fdisk (util-linux 2.25.2).
-Changes will remain in memory only, until you decide to write them.
-Be careful before using the write command.
-
-Command (m for help): p
-Disk /dev/sdb: 1 GiB, 1073741824 bytes, 2097152 sectors
-Units: sectors of 1 * 512 = 512 bytes
-Sector size (logical/physical): 512 bytes / 512 bytes
-I/O size (minimum/optimal): 512 bytes / 512 bytes
-Disklabel type: dos
-Disk identifier: 0xc0e7edd0
-
-Device     Boot Start    End Sectors  Size Id Type
-/dev/sdb1        2048 206847  204800  100M 83 Linux
+```bash
+sudo cryptsetup -y -v luksFormat /dev/sdb1
 ```
 
-our new partition is /dev/sdb1
-
-to encrypt this partition we have to format it first with LUKS
-
-```bash
-[root@localhost ~]# cryptsetup  luksFormat /dev/sdb1
-
+```text
 WARNING!
 ========
 This will overwrite data on /dev/sdb1 irrevocably.
 
 Are you sure? (Type uppercase yes): YES
-Enter passphrase:
-Verify passphrase:
-[root@localhost ~]#
-```
-
-okay now we have a partition disk encrypted we need to make it usable
-
-to use this disk first u have to open it with LUKS
-
-when you use LUKS to open partition  you should **name** the partition and this name will be used later for mounting
-
-let's see how to do it
-
-```bash
-[root@localhost ~]# cryptsetup -v luksOpen /dev/sdb1 <strong>crypted1</strong>
-Enter passphrase for /dev/sdb1:
-Key slot 0 unlocked.
+Enter passphrase: 
+Verify passphrase: 
 Command successful.
-[root@localhost ~]#
 ```
 
-u will get new partition in device mapper called crypted1  this is the **name**
+The partition now contains a LUKS header with encrypted key slots. Raw data cannot be read without the passphrase.
+
+---
+
+### Step 3: Unlocking the Encrypted Container (`luksOpen`)
+
+To interact with the encrypted volume, decrypt and map it into the Linux Device Mapper:
 
 ```bash
-[root@localhost ~]# ls -l /dev/mapper/crypted1
-lrwxrwxrwx. 1 root root 7 Jul  5 02:20 /dev/mapper/crypted1 -> ../dm-2
-[root@localhost ~]#
+sudo cryptsetup luksOpen /dev/sdb1 secure_storage
 ```
 
-it's open but we still can't use it need some filesystem structure so we will add ext4 to this mapper
+Enter your passphrase. Upon verification, the kernel creates an unencrypted virtual block device at:
+`/dev/mapper/secure_storage`
+
+---
+
+### Step 4: Creating the Filesystem and Mounting
+
+Format the virtual mapping with your preferred filesystem (e.g., `ext4` or `xfs`):
 
 ```bash
-[root@localhost ~]# mkfs.ext4 /dev/mapper/crypted1
-mke2fs 1.42.11 (09-Jul-2014)
-Creating filesystem with 100352 1k blocks and 25168 inodes
-Filesystem UUID: 9d6073d6-2536-4d5a-b21d-9586d20f4acf
-Superblock backups stored on blocks:
-	8193, 24577, 40961, 57345, 73729
-
-Allocating group tables: done
-Writing inode tables: done
-Creating journal (4096 blocks): done
-Writing superblocks and filesystem accounting information: done
-
-[root@localhost ~]#
+sudo mkfs.ext4 /dev/mapper/secure_storage
 ```
 
-finally, our partition is ready for use
-
-and here we go
+Create a mount point and mount the decrypted volume:
 
 ```bash
-[root@localhost ~]# mkdir /mnt/crypted1
-[root@localhost ~]# mount /dev/mapper/crypted1 /mnt/crypted1/
-[root@localhost ~]# echo "top s3cr3t" > /mnt/crypted1/file.txt
-[root@localhost ~]# df -h
-Filesystem               Size  Used Avail Use% Mounted on
-/dev/mapper/fedora-root  6.5G  4.1G  2.0G  68% /
-devtmpfs                 991M     0  991M   0% /dev
-tmpfs                   1001M   96K 1001M   1% /dev/shm
-tmpfs                   1001M  912K 1000M   1% /run
-tmpfs                   1001M     0 1001M   0% /sys/fs/cgroup
-tmpfs                   1001M   44K 1001M   1% /tmp
-/dev/sda1                477M  103M  345M  23% /boot
-tmpfs                    201M  4.0K  201M   1% /run/user/42
-tmpfs                    201M   12K  201M   1% /run/user/1000
-tmpfs                    201M     0  201M   0% /run/user/0
-/dev/mapper/crypted1      91M  1.6M   83M   2% /mnt/crypted1
+sudo mkdir -p /mnt/secure_data
+sudo mount /dev/mapper/secure_storage /mnt/secure_data
 ```
 
-now we can unmount this partition and close it and our file is safe ;)
+Verify the active mount:
 
 ```bash
-[root@localhost ~]# umount /mnt/crypted1
-[root@localhost ~]# cryptsetup luksClose crypted1
+df -h /mnt/secure_data
+# Filesystem                   Size  Used Avail Use% Mounted on
+# /dev/mapper/secure_storage    91M  1.6M   83M   2% /mnt/secure_data
 ```
 
-happy privacy!
+Any files written to `/mnt/secure_data` are automatically encrypted on-the-fly before writing to physical sectors on `/dev/sdb1`.
+
+---
+
+### Step 5: Locking Down the Encrypted Partition
+
+When work is finished, cleanly unmount the filesystem and close the device mapper mapping:
+
+```bash
+# 1. Unmount the filesystem
+sudo umount /mnt/secure_data
+
+# 2. Tear down the decrypted kernel mapping
+sudo cryptsetup luksClose secure_storage
+```
+
+Once closed, the device mapper node `/dev/mapper/secure_storage` is removed from the kernel, leaving only the encrypted raw sectors on `/dev/sdb1`.

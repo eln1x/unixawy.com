@@ -1,82 +1,67 @@
 ---
-title: "SSH Tunnelling"
+title: "Mastering SSH Port Forwarding: Local, Remote, and Dynamic SOCKS Proxies"
 date: 2015-08-12T23:18:08+00:00
 url: "/ssh-tunnelling/"
 draft: false
-description: "the most famous method is using D parameter in ssh connection to bind a port local in your machine and this port tunnel back to our remote box to send our..."
-categories: ["blog", "Linux", "tech"]
+description: "A practical guide to SSH port forwarding: local port forwarding (-L), dynamic SOCKS proxies (-D), and reverse remote tunnels (-R) for bypassing NAT and firewalls."
+categories: ["Linux", "Networking", "Security"]
+tags: ["ssh", "port-forwarding", "tunneling", "socks-proxy", "pivoting", "red-team", "sysadmin"]
 ---
 
-the most famous method is using D parameter in ssh connection to bind a port local in your machine and this port tunnel back to our remote box
-to send our traffic to this server
+SSH is far more than an encrypted remote terminal—it is an extensible transport protocol capable of encapsulating arbitrary TCP traffic across segmented network boundaries, NAT gateways, and restrictive firewalls.
 
-example
+Here is how to leverage **Dynamic**, **Local**, and **Remote Reverse** SSH tunnels.
 
-```bash
-ssh -D 1337 root@remotebox
-```
+---
 
-then you can configure your application and browser to use your local IP 127.0.0.1 with the port 1337 to send traffic to the remote server
+### 1. Dynamic Port Forwarding (`-D`): SOCKS Proxy
 
-this is the traditional tunnelling way
-
-let's make a bigger scenario
-
-let's assume that we have access to the box with 2 interfaces
-first interface with public IP and the second one with internal private LAN
-
-the public IP 41.x.x.x
-the private LAN IP 192.168.0.10
-
-inside the private LAN machine with IP 192.168.0.20 and running ssh service and we want to connect to this machine
-its impossible to connect to it from outside without tunnelling
-
-let's do some tunnel magic
-
-from our box to the remote box we will do ssh
-OUR BOX ==SSH==> 41.x.x.x
-inside the remote box, we will tunnel back to our machine
+Dynamic port forwarding turns your SSH client into a local SOCKS5 proxy server. Any application configured to use this proxy routes its network requests through the remote SSH host.
 
 ```bash
-[root@REMOTE~]# ssh -f -N -R 1337:192.168.0.20:22 n1x@OURBOX
+ssh -D 1080 -q -C -N user@remote.corp
 ```
 
-this will open port 1337 in the OUR BOX this port redirect to 192.168.0.20 machine in port 22
+- `-D 1080`: Binds local SOCKS proxy on `127.0.0.1:1080`.
+- `-q`: Quiet mode.
+- `-C`: Enables stream compression.
+- `-N`: Do not execute a remote command (tunneling only).
 
-REMOTE BOX ==SSH+LOCAL FORWARD==>OURBOX
+Configure your browser, `curl`, or `proxychains` to point to `socks5://127.0.0.1:1080` to browse internal networks visible only to the remote server.
+
+---
+
+### 2. Local Port Forwarding (`-L`): Accessing Internal Services
+
+Local port forwarding maps a local port on your machine directly to a remote destination accessible from the SSH jump server:
 
 ```bash
-[n1x@OURBOX ~]$ ssh root@127.0.0.1 -p 1337
+# Syntax: ssh -L [local_port]:[target_destination]:[target_port] [jump_host]
+ssh -L 8080:192.168.1.50:80 user@jump.corp
 ```
 
-this ssh connection will lead u to the 192.168.0.20:22
+Connecting to `http://localhost:8080` on your browser transparently forwards packets through `jump.corp` to `192.168.1.50:80`.
 
-sometimes you may need to skip ssh host verification as you connect to your local machine via this ssh option parameters UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no
+---
+
+### 3. Remote Reverse Port Forwarding (`-R`): Punching Inbound through NAT
+
+What if a target machine sits behind a strict NAT firewall with no public IP, and you need to connect back to its SSH service?
+
+Have the internal machine initiate a reverse tunnel to your external control server (`external.corp`):
 
 ```bash
-[n1x@OURBOX ~]$ ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no root@127.0.0.1 -p 1337
+# Executed on the internal/client machine:
+ssh -f -N -R 9932:127.0.0.1:22 operator@external.corp
 ```
 
-also, this method could be used to bind to your internal ip to send ssh server back to better administration with vim also it possible to forward X via this tunnelling method
+- `-R 9932:127.0.0.1:22`: Instructs `external.corp` to listen on port `9932` and forward all incoming connections back through the established SSH channel to the client's local port `22`.
+- `-f`: Backgrounds the SSH process before command execution.
 
- 
-
-example scenario
-
-our client don't have public IP and writing commands in TeamViewer is an unusable thing
-
-so we ask our client to connect back to our machine
+Now, on your control server (`external.corp`), you can connect directly into the internal machine:
 
 ```bash
-[root@client-6 ~]# ssh -f -N -R 9932:127.0.0.1:22 n1x@OURBOX
+ssh -p 9932 -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no root@127.0.0.1
 ```
 
-after client log in inside our machine we can connect to our client ssh via
-
-```bash
-[n1x@ourbox ~]$ ssh root@127.0.0.1 -p 9932
-```
-
- 
-
-Happy Tunnelling
+You are now logged into the internal NAT-isolated system.
