@@ -1,68 +1,88 @@
 ---
-title: "users in shadow file explanation"
+title: "Dissecting the Linux /etc/shadow File: Password Hashes and Aging Fields"
 date: 2015-07-16T01:09:24+00:00
 url: "/users-in-shadow-file-explanation/"
 draft: false
-description: "this article explain the /etc/shadow this file content the users information example of the user data username n1x password..."
-categories: ["blog", "Linux"]
+description: "A detailed breakdown of the 9 fields in the Linux /etc/shadow file, password hash algorithms ($1, $5, $6), epoch timestamp math, and account aging with chage."
+categories: ["Linux", "Security"]
+tags: ["linux", "shadow", "password-security", "chage", "cryptography", "sysadmin"]
 ---
 
-this article explain the /etc/shadow
+In Linux, user account definitions reside in `/etc/passwd` (world-readable), while encrypted password hashes and credential aging rules reside in `/etc/shadow` (restricted to root with `0640` or `0600` permissions).
 
-this file content the users information
+Understanding `/etc/shadow` field definitions is essential for system auditing, incident response, and credential analysis.
 
-example of the user data
+---
 
-```c
-n1x:$6$UoDmVdoW$tYQQm5uHgOpeEKPygIaQ1GM/0IBbdYVrLHu8ZYF5pT17D3VM.FFKa2wS8J6gqbGKC2IpgImXy7SYVJK9r/fdw.:16631:7:15:2:14:16819:
+### Anatomy of an `/etc/shadow` Entry
+
+Each line consists of **9 colon-separated fields**:
+
+```text
+n1x:$6$UoDmVdoW$tYQQm5uHgOpe...:16631:7:15:2:14:16819:
 ```
 
-username -> n1x
-password -> $6$UoDmVdoW$tYQQm5uHgOpeEKPygIaQ1GM/0IBbdYVrLHu8ZYF5pT17D3VM.FFKa2wS8J6gqbGKC2IpgImXy7SYVJK9r/fdw.
-last date password update since 1970-1-1 -> 16631
+| Field # | Attribute Name | Value in Example | Description |
+| :---: | :--- | :--- | :--- |
+| **1** | **Username** | `n1x` | Account login name matching `/etc/passwd`. |
+| **2** | **Encrypted Password** | `$6$UoDmVdoW$...` | Cryptographic hash prefixed by algorithm identifier. |
+| **3** | **Last Changed Date** | `16631` | Days since the Unix Epoch (Jan 1, 1970) when password was last updated. |
+| **4** | **Minimum Age** | `7` | Days user must wait before they can change password again. |
+| **5** | **Maximum Age** | `15` | Days before the password expires and must be changed. |
+| **6** | **Warning Period** | `2` | Days prior to expiration that warning prompts begin displaying. |
+| **7** | **Inactivity Period** | `14` | Days after expiration during which user can still change password; past this, account is disabled. |
+| **8** | **Expiration Date** | `16819` | Absolute date (in days since epoch) when account is permanently disabled. |
+| **9** | **Reserved** | *(empty)* | Flag reserved for future operating system use. |
 
-you can calculate it simply in python
+---
+
+### Identifying Password Hash Algorithms
+
+The second field begins with `$id$salt$hash`. The ID reveals the cryptographic hashing algorithm used:
+
+- **`$1$`**: Legacy MD5
+- **`$2a$` / `$2y$`**: Blowfish (bcrypt)
+- **`$5$`**: SHA-256
+- **`$6$`**: SHA-512 (standard on modern Linux distributions)
+- **`$y$`**: Yescrypt (modern default on Debian 12+ and Fedora)
+- **`!`** or **`*`**: Account locked or password disabled (cannot log in via password).
+
+---
+
+### Calculating Human-Readable Dates from Epoch Days
+
+To convert the integer day counts (such as `16631` or `16819`) into standard dates using Python:
 
 ```python
->>> from datetime import timedelta,datetime
->>> s = '1970-01-01'
->>> x = datetime.strptime(s,"%Y-%m-%d")
->>> x + timedelta(days=16631)
-datetime.datetime(2015, 7, 15, 0, 0)
+from datetime import datetime, timedelta
+
+epoch = datetime(1970, 1, 1)
+last_changed = epoch + timedelta(days=16631)
+print(last_changed.strftime("%Y-%m-%d"))
+# Output: 2015-07-15
 ```
 
-minmum password age -> 7
-maximum password age -> 15
-warning days -> 2
-inactive days -> 14
-expiration date -> 16819
+---
 
-we can list or modify a user by a chage command
-example
+### Managing Shadow Policies with `chage`
+
+Rather than manually editing `/etc/shadow`, use the `chage` (change age) command:
 
 ```bash
-[root@localhost ~]# chage -m 7 -M 15 -W 2 -I 14 -E 2016-01-19 n1x
-[root@localhost ~]# chage -l n1x
-Last password change					: Jul 15, 2015
-Password expires					: Jul 30, 2015
-Password inactive					: Aug 13, 2015
-Account expires						: Jan 19, 2016
-Minimum number of days between password change		: 7
-Maximum number of days between password change		: 15
-Number of days of warning before password expires	: 2
-[root@localhost ~]#
+# Set aging policy: min 7 days, max 90 days, warn 7 days, inactive 14 days, expire 2026-12-31
+sudo chage -m 7 -M 90 -W 7 -I 14 -E 2026-12-31 n1x
+
+# Display active account aging details
+sudo chage -l n1x
 ```
 
-for setting default config for all users you can use /etc/login.defs
+### System-Wide Default Settings (`/etc/login.defs`)
 
-# Password aging controls:
-#
-# PASS_MAX_DAYS Maximum number of days a password may be used.
-# PASS_MIN_DAYS Minimum number of days allowed between password changes.
-# PASS_MIN_LEN Minimum acceptable password length.
-# PASS_WARN_AGE Number of days warning given before a password expires.
-#
-PASS_MAX_DAYS 30
-PASS_MIN_DAYS 10
-PASS_MIN_LEN 10
-PASS_WARN_AGE 1
+To set default aging rules for all newly created accounts, configure `/etc/login.defs`:
+
+```text
+PASS_MAX_DAYS   90
+PASS_MIN_DAYS   7
+PASS_WARN_AGE   7
+PASS_MIN_LEN    12
+```

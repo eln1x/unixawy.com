@@ -1,84 +1,109 @@
 ---
-title: "Protect Boot  & Single user mode"
+title: "Hardening Linux Boot: Securing GRUB, Single-User Mode, and Console Hotkeys"
 date: 2015-08-17T03:42:42+00:00
 url: "/protect-bootsingle-user-mode/"
 draft: false
-description: "as a physical security is the main factor in our security perspective we all need to protect unauthorised access to our Linux box after we protect bios and we..."
-categories: ["blog", "Linux", "Security", "tech"]
+description: "How to prevent unauthorized local console takeovers on Linux by password-protecting GRUB, enforcing sulogin on single-user recovery mode, and disabling console reboot interrupts."
+categories: ["Linux", "Security"]
+tags: ["linux", "grub", "boot-security", "single-user-mode", "hardening", "physical-security"]
 image: "/uploads/2015/08/Screen-Shot-2015-08-17-at-3.32.33-AM.png"
 ---
 
-as a physical security is the main factor in our security perspective
+Physical access to a Linux machine often guarantees total system compromise if boot configurations remain unhardened. By default, anyone with physical or KVM console access can interrupt the GRUB bootloader, append `single`, `init=/bin/sh`, or `emergency` to the kernel arguments, and bypass authentication into a root shell.
 
-we all need to protect unauthorised access to our Linux box after we protect bios
+Securing the boot process requires hardening three independent layers:
+1. **Password-protecting the GRUB bootloader**
+2. **Requiring authentication for single-user/emergency mode**
+3. **Disabling interactive startup prompts and console reboot hotkeys**
 
-and we all know that anyone can rest the root password via accessing the single mode
+---
 
-so we have 3 ways 1st thing to disable single user mode entirely  2nd adding a password 3rd encrypt the disk with luks
+### 1. Password-Protecting Single-User Mode (`sulogin`)
 
-single use mode configuration located under /etc/sysconfig/init
+In legacy SysVinit/Upstart configurations (`/etc/sysconfig/init`):
+```text
+# Default may allow unauthenticated root access via sushell:
+# SINGLE=/sbin/sushell
 
-```
-BOOTUP=color
-RES_COL=60
-MOVE_TO_COL="echo -en \\033[${RES_COL}G"
-SETCOLOR_SUCCESS="echo -en \\033[0;32m"
-SETCOLOR_FAILURE="echo -en \\033[0;31m"
-SETCOLOR_WARNING="echo -en \\033[0;33m"
-SETCOLOR_NORMAL="echo -en \\033[0;39m"
-PROMPT=yes
-AUTOSWAP=no
-ACTIVE_CONSOLES=/dev/tty[1-6]
-SINGLE=/sbin/sushell
+# Change to sulogin to mandate root password verification:
+SINGLE=/sbin/sulogin
 ```
 
-the last line of the init configuration instructs the user shell for single user mode
+On modern **systemd** distributions (RHEL 7/8/9, Ubuntu 18.04+), emergency and rescue targets invoke `/usr/lib/systemd/systemd-sulogin-shell` by default. Verify that root authentication is enforced before spawning maintenance shells:
 
-sushell  this shell allows access with full root privilege  we can change the shell type to control the single user mode
-
-if we sit it /sbin/nologin no single user mode will be activated on the boot and the machine will continue booting to default run level ;)
-
-we can set it to sulogin to make boot asks for the root password before it continues to give a full root access
-
+```bash
+# Check emergency service definition
+systemctl cat emergency.service | grep ExecStart
+# ExecStart=-/usr/lib/systemd/systemd-sulogin-shell emergency
 ```
+
+When someone triggers maintenance mode, the console demands root credentials before granting shell access:
+
+```text
 Give root password for maintenance
 (or type Control-D to continue):
 ```
 
- 
+---
 
-we can add more password layer for grub configuration via adding password --encrypt HASH from grub-crypt command
+### 2. Password-Protecting the GRUB2 Bootloader
 
-one important thing an attacker can manipulate boot start services by pressing (i) in the boot sequence
+Protecting the bootloader prevents unauthorized users from modifying kernel parameters or choosing alternate kernels without authentication:
 
-an attacker can disable any running service example I disabled iptables in the boot :D
+1. **Generate an encrypted PBKDF2 password hash:**
+   ```bash
+   grub2-setpassword
+   # (Or: grub-mkpasswd-pbkdf2)
+   ```
+   This stores the cryptographic hash in `/boot/grub2/user.cfg`.
 
-![Screen Shot 2015-08-17 at 3.32.33 AM](/uploads/2015/08/Screen-Shot-2015-08-17-at-3.32.33-AM.png)
+2. **Define an authorized superuser in `/etc/grub.d/01_users`:**
+   ```text
+   cat <<EOF >> /etc/grub.d/01_users
+   set superusers="admin"
+   password_pbkdf2 admin grub.pbkdf2.sha512...
+   EOF
+   ```
 
-we can protect from this disaster by disable hotkeys in /etc/sysconfig/init
+3. **Rebuild the GRUB configuration:**
+   ```bash
+   # BIOS:
+   sudo grub2-mkconfig -o /boot/grub2/grub.cfg
+   # UEFI:
+   sudo grub2-mkconfig -o /boot/efi/EFI/redhat/grub.cfg
+   ```
 
-```
+Users can still boot standard kernels normally, but pressing `e` to edit parameters requires the `admin` password.
+
+---
+
+### 3. Disabling Interactive Startup (`PROMPT=no`)
+
+During legacy startup sequences, pressing `i` initiates interactive startup, allowing anyone at the console to selectively bypass system services (including the firewall / `iptables`):
+
+![Interactive Boot Bypass](/uploads/2015/08/Screen-Shot-2015-08-17-at-3.32.33-AM.png)
+
+Disable this prompt in `/etc/sysconfig/init`:
+
+```text
 PROMPT=no
 ```
 
-protect the console from reboot via ctrl-alt-delete
+---
 
-an attacker can press ctrl-alt-delete to your machine to make it reboot
+### 4. Disabling Console `Ctrl+Alt+Delete` Reboots
 
-to disable it we need to change the behaviour of this intercept in /etc/init/control-alt-delete.conf
+Prevent malicious or accidental console keystrokes from rebooting the server:
+
+#### On systemd:
+Mask the target responsible for handling the interrupt:
 
 ```bash
-# control-alt-delete - emergency keypress handling
-#
-# This task is run whenever the Control-Alt-Delete key combination is
-# pressed.  Usually used to shut down the machine.
-#
-# Do not edit this file directly. If you want to change the behaviour,
-# please create a file control-alt-delete.override and put your changes there.
-
-start on control-alt-delete
-
-#exec /sbin/shutdown -r now "Control-Alt-Delete pressed"
+sudo systemctl mask ctrl-alt-del.target
 ```
 
-by adding a comment to the exec line to disable reboot
+#### On Upstart:
+Override `/etc/init/control-alt-delete.override`:
+```bash
+echo "exec /usr/bin/logger -p authpriv.warning 'Ctrl-Alt-Delete pressed at console; reboot blocked.'" | sudo tee /etc/init/control-alt-delete.override
+```
