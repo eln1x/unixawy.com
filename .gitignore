@@ -11,4 +11,4 @@ Thumbs.db
 
 # WordPress raw migration source (optional to ignore from public repo)
 unixawycomsecurityblog.WordPress.*.xml
-uploads/
+/uploads/
