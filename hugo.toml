@@ -1,7 +1,7 @@
 baseURL = "https://www.unixawy.com/"
 locale = "en-us"
 languageCode = "en-us"
-title = "unixawy.com | Security Blog"
+title = "_N1X_ | Security Blog"
 theme = "PaperMod"
 
 [pagination]
@@ -103,3 +103,17 @@ buildFuture = false
 
   [params.search]
     enabled = true
+
+  math = true
+  mermaid = true
+
+[markup]
+  [markup.goldmark]
+    [markup.goldmark.renderer]
+      unsafe = true
+    [markup.goldmark.extensions]
+      [markup.goldmark.extensions.passthrough]
+        enable = true
+        [markup.goldmark.extensions.passthrough.delimiters]
+          block = [['\[', '\]'], ['$$', '$$']]
+          inline = [['\(', '\)'], ['$', '$']]
