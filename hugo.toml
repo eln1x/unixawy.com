@@ -54,7 +54,7 @@ buildFuture = false
 [params]
   env = "production"
   title = "unixawy.com | Security Blog"
-  description = "Ahmad Mahfouz - Security, Vulnerability Research, Linux & Systems"
+  description = "Ahmad Mahfouz - Application Security Manager | Personal blog sharing thoughts, security research, and engineering experiments."
   author = "Ahmad Mahfouz"
 
   defaultTheme = "auto"
@@ -78,7 +78,7 @@ buildFuture = false
   [params.profileMode]
     enabled = true
     title = "Hi, I'm Ahmad Mahfouz"
-    subtitle = "Staff Cybersecurity Engineer | Strategic Vulnerability Management & Offensive Operations | Critical Infrastructure & SaaS Security"
+    subtitle = "Application Security Manager — Personal blog sharing thoughts, security research, and engineering experiments."
     imageUrl = "/uploads/2026/02/1763805118345-300x300.png"
     imageTitle = "Ahmad Mahfouz"
     imageWidth = 140

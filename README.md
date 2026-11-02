@@ -1,6 +1,6 @@
 # unixawy.com — Personal Security & Engineering Blog
 
-The official repository for [www.unixawy.com](https://www.unixawy.com), a personal technical cybersecurity blog authored by **Ahmad Mahfouz** (`_N1X_`).
+The official repository for [www.unixawy.com](https://www.unixawy.com), a personal technical cybersecurity blog authored by **Ahmad Mahfouz** (`_N1X_`), Application Security Manager.
 
 Migrated from WordPress to a modern, static architecture powered by [Hugo](https://gohugo.io/) and the [PaperMod](https://github.com/adityatelange/hugo-PaperMod) theme.
 
@@ -25,7 +25,7 @@ Migrated from WordPress to a modern, static architecture powered by [Hugo](https
 .
 ├── .github/workflows/deploy.yml   # Automated GitHub Pages CI/CD workflow
 ├── content/
-│   ├── about.md                   # Author bio and executive profile
+│   ├── about.md                   # Author bio and profile
 │   ├── search.md                  # Client-side full-text search layout
 │   └── posts/                     # 60+ technical articles and exploit writeups
 ├── static/
@@ -48,15 +48,16 @@ To run the blog locally:
    ```bash
    git clone https://github.com/eln1x/unixawy.com.git
    cd unixawy.com
+   git submodule update --init --recursive
    ```
 3. Start the local development server:
    ```bash
    hugo server -D
    ```
-4. Open [http://localhost:1313](http://localhost:1313) in your browser.
+4. Open `http://localhost:1313` in your browser.
 
 ---
 
-## 📜 Deployment
+## 📄 License & Content Rights
 
-Pushes to the `main` branch trigger the GitHub Actions workflow to build the Hugo site with minification and deploy the resulting artifacts directly to GitHub Pages.
+All article contents, writeups, and media belong to Ahmad Mahfouz. Code snippets are licensed under the MIT License.

@@ -3,39 +3,42 @@ title: "About Me"
 date: 2014-12-04T16:17:47+00:00
 url: "/about/"
 draft: false
-description: "Strategic Cybersecurity Leader with 10+ years of experience protecting critical global infrastructure (S.W.I.F.T.) and Fortune 500 enterprise SaaS/PaaS..."
+description: "Application Security Manager with 10+ years of experience across application security, offensive operations, vulnerability management, and systems engineering."
 ---
 
-Strategic Cybersecurity Leader with 10+ years of experience protecting critical global infrastructure (S.W.I.F.T.) and Fortune 500 enterprise SaaS/PaaS (ServiceNow). Currently serves as Staff Engineer within the Office of the CISO, I specialize in managing enterprise-scale Vulnerability Assessment services and GDPR-governed regional escalations.
-I bridge the gap between elite technical execution (GXPN, OSCE, CRTE) and executive-level strategic governance (GSTRT, GSLC), with a proven track record of managing security escalations, vulnerability managements and technical teams in high-security environments.
+Hi, I'm Ahmad Mahfouz (`_N1X_`). I currently serve as an **Application Security Manager** with over a decade of hands-on and strategic experience protecting critical global financial infrastructure (S.W.I.F.T.) and enterprise SaaS/PaaS platforms.
 
-**Core Competencies & Professional Skills**
+**unixawy.com** is my personal blog and digital notebook—a space where I share my thoughts, technical experiments, vulnerability research, and practical engineering solutions. Here you will find writeups ranging from Linux internals and memory exploitation to modern AppSec architecture, cloud security, and agentic AI systems.
+
+I bridge deep offensive technical tradecraft (GXPN, OSCE, CRTE, CRTO) with high-level security leadership and governance (GSTRT, GSLC), helping engineering and security teams build resilient software at scale.
+
+**Core Focus Areas & Competencies**
 
 ---
 
-**Strategic Leadership:** Security Strategy & Policy (GSTRT, GSLC); Executive Briefing (RIT Comm); Service Demand Management.
+**Application & Cloud Security:** Secure SDLC (SSDLC), Threat Modeling, CI/CD Pipeline Security, SAST/DAST/SCA Integration, Multi-Cloud Security (AWS, GCP), and Container Security.
 
-**Vulnerability Management:** End-to-End VA Lifecycle Management; GDPR & European Regulatory Compliance; Risk-Driven Remediation; Major Incident Command (IC).
+**Offensive Operations & Red Teaming:** Adversary Simulation & Purple Teaming (CRTE, CRTO); Advanced Exploit Research & VAPT (GXPN, OSCE); Wargames & Low-Level Systems Analysis.
 
-**Offensive Operations:** Adversary Simulation & Purple Teaming (CRTE, CRTO); Advanced Exploit Research & VAPT (GXPN, OSCE); Full-Stack Threat Modeling.
+**Vulnerability Management & Governance:** End-to-End Vulnerability Lifecycle Management; Risk-Driven Remediation; Security Strategy & Policy (GSTRT, GSLC); GDPR & European Regulatory Compliance.
 
-**Security Engineering:** Security Automation (Python, Ansible); Secure SDLC Integration; Multi-Cloud Security (AWS, GCP); Distributed Ledger/Blockchain Security.
+**AI Engineering & Automation:** Context Engineering, Agentic System Design Patterns, Security Automation (Python, Ansible, Bash), and Semantic Process Integration.
 
-**AI Engineering**: Context Engineering, Agentic System Design Pattern, and Semantic Processes integrations.
-
-**Education and Key Certificates**
+**Education and Key Certifications**
 
 ---
 
 - **Bachelor’s Degree in Information Systems** – Delta University for Science and Technology
 - **Business Communication** – Rochester Institute of Technology (RIT) on EdX
 - **Blockchain Specialization** – University at Buffalo, The State University of New York
-- **GIAC Advisory Board -** GIAC Certifications
+- **GIAC Advisory Board** – GIAC Certifications
 - **GIAC Strategic Planning, Policy, and Leadership (GSTRT)** – GIAC Certifications
 - **GIAC Security Leadership (GSLC)** – GIAC Certifications
 - **GIAC Exploit Researcher and Advanced Penetration Tester (GXPN)** – GIAC Certifications
 - **Certified Red Team Expert (CRTE)** – Altered Security
 - **Certified Red Team Operator (CRTO)** – ZeroPoint Security
-- **Offensive Security Certified Expert (OSCE)** – Offensive Security “OffSec”
+- **Offensive Security Certified Expert (OSCE)** – Offensive Security (OffSec)
 
-[Github](https://github.com/eln1x)   [LinkedIn](https://www.linkedin.com/in/ahmadmahfouz)   [Twitter](http://twitter.com/@eln1x)
+---
+
+Connect with me: [GitHub](https://github.com/eln1x) | [LinkedIn](https://www.linkedin.com/in/ahmadmahfouz) | [X (Twitter)](https://x.com/eln1x)
