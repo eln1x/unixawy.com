@@ -54,7 +54,7 @@ buildFuture = false
 [params]
   env = "production"
   title = "unixawy.com | Security Blog"
-  description = "Ahmad Mahfouz - Application Security Manager | Personal blog sharing thoughts, security research, and engineering experiments."
+  description = "Ahmad Mahfouz - Application Security Manager at ServiceNow | Personal blog sharing thoughts, security research, and engineering experiments."
   author = "Ahmad Mahfouz"
 
   defaultTheme = "auto"
@@ -78,7 +78,7 @@ buildFuture = false
   [params.profileMode]
     enabled = true
     title = "Hi, I'm Ahmad Mahfouz"
-    subtitle = "Application Security Manager — Personal blog sharing thoughts, security research, and engineering experiments."
+    subtitle = "Application Security Manager at ServiceNow — Personal blog sharing thoughts, security research, and engineering experiments."
     imageUrl = "/uploads/2026/02/1763805118345-300x300.png"
     imageTitle = "Ahmad Mahfouz"
     imageWidth = 140

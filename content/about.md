@@ -3,10 +3,10 @@ title: "About Me"
 date: 2014-12-04T16:17:47+00:00
 url: "/about/"
 draft: false
-description: "Application Security Manager with 10+ years of experience across application security, offensive operations, vulnerability management, and systems engineering."
+description: "Application Security Manager at ServiceNow with 10+ years of experience across application security, offensive operations, and critical infrastructure."
 ---
 
-Hi, I'm Ahmad Mahfouz (`_N1X_`). I currently serve as an **Application Security Manager** with over a decade of hands-on and strategic experience protecting critical global financial infrastructure (S.W.I.F.T.) and enterprise SaaS/PaaS platforms.
+Hi, I'm Ahmad Mahfouz (`_N1X_`). I currently serve as an **Application Security Manager at ServiceNow**, bringing over a decade of hands-on and strategic experience protecting enterprise cloud platforms (ServiceNow) and critical global financial infrastructure (S.W.I.F.T.).
 
 **unixawy.com** is my personal blog and digital notebook—a space where I share my thoughts, technical experiments, vulnerability research, and practical engineering solutions. Here you will find writeups ranging from Linux internals and memory exploitation to modern AppSec architecture, cloud security, and agentic AI systems.
 
