@@ -54,7 +54,7 @@ buildFuture = false
 [params]
   env = "production"
   title = "unixawy.com | Security Blog"
-  description = "Ahmad Mahfouz - Application Security Manager at ServiceNow | Personal blog sharing thoughts, security research, and engineering experiments."
+  description = "Ahmad Mahfouz | Personal blog sharing thoughts, security research, and engineering experiments."
   author = "Ahmad Mahfouz"
 
   defaultTheme = "auto"
