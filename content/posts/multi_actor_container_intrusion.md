@@ -1,6 +1,6 @@
 ---
 title: "Analyzing a Multi-Actor Container Intrusion: Memory Analysis, Dead-Drop C2s, and a DDoS Payload"
-date: 2026-11-02T01:30:00+00:00
+date: 2026-11-06T01:30:00+00:00
 url: "/multi-actor-container-intrusion/"
 draft: false
 description: "Forensic breakdown of a compromised Budibase container harboring two concurrent processes: a dead-drop C2 implant and a custom Turnstile-bypassing DDoS bot."
@@ -282,7 +282,7 @@ To beat this, the creators of `browser2_all` built a tight, three-stage executio
 
 ```mermaid
 sequenceDiagram
-    participant Wrapper as Stage 1: browser2_aSorryItsmyxxxxxxxxxll.c
+    participant Wrapper as Stage 1: browser2_a
     participant Solver as Stage 2: browser2_solve.c (Chrome 152 + CDP)
     participant Flooder as Stage 3: h4.cpp (BoringSSL H2 Flooder)
     participant Target as Target Server
