@@ -78,7 +78,7 @@ buildFuture = false
   [params.profileMode]
     enabled = true
     title = "Hi, I'm Ahmad Mahfouz"
-    subtitle = "Application Security Manager at ServiceNow — Personal blog sharing thoughts, security research, and engineering experiments."
+    subtitle = "Personal blog sharing thoughts, security research, and engineering experiments."
     imageUrl = "/uploads/2026/02/1763805118345-300x300.png"
     imageTitle = "Ahmad Mahfouz"
     imageWidth = 140
