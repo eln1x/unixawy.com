@@ -1,13 +1,36 @@
+/* Full width layout with constrained article content */
+.main {
+    width: 100%;
+    max-width: 100%;
+    margin: 0;
+    padding: 0 2rem;
+}
+
+.post-content {
+    max-width: 900px;
+    margin: 0 auto;
+}
+
 /* Compact profile header on homepage */
 .main .profile {
     min-height: auto;
     padding: 3rem 0 2rem;
+    max-width: 900px;
+    margin: 0 auto;
 }
 
 .profile-container {
     border-bottom: 1px solid var(--border);
     padding-bottom: 1.5rem;
     margin-bottom: 2rem;
+    max-width: 900px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.recent-posts {
+    max-width: 900px;
+    margin: 0 auto;
 }
 
 .recent-posts-header {
