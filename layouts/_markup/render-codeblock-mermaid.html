@@ -1,4 +1,7 @@
-<pre class="mermaid" style="background: transparent; border: none; text-align: center;">
-  {{- .Inner }}
-</pre>
+<div class="mermaid-container">
+  {{ partial "mermaid-controls.html" . }}
+  <pre class="mermaid" style="background: transparent; border: none; text-align: center;">
+    {{- .Inner }}
+  </pre>
+</div>
 {{ .Page.Store.Set "hasMermaid" true }}

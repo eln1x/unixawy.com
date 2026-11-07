@@ -36,10 +36,80 @@
     text-decoration: underline;
 }
 
+.mermaid-container {
+    max-width: 100%;
+    margin: 1.5rem 0;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+}
+
+.mermaid-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    padding: 0.5rem;
+    border-bottom: 1px solid var(--border);
+}
+
+.mermaid-toolbar button {
+    padding: 0.25rem 0.6rem;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--entry);
+    color: var(--primary);
+    cursor: pointer;
+    font: inherit;
+}
+
+.mermaid-toolbar button:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+}
+
+.mermaid-zoom-level {
+    min-width: 3.5rem;
+    color: var(--secondary);
+    text-align: center;
+    font-size: 0.875rem;
+}
+
+.mermaid-status {
+    color: var(--secondary);
+    font-size: 0.875rem;
+}
+
 .post-content pre.mermaid {
-    overflow-x: auto;
+    box-sizing: border-box;
+    max-width: 100%;
+    margin: 0;
+    padding: 0.75rem;
+    overflow: auto;
 }
 
 .post-content pre.mermaid svg {
+    display: block;
+    width: 100%;
     max-width: none;
+    height: auto;
+    margin: 0 auto;
+}
+
+.mermaid-container:fullscreen {
+    box-sizing: border-box;
+    display: flex;
+    width: 100%;
+    height: 100%;
+    flex-direction: column;
+    padding: 1rem;
+    border: 0;
+    border-radius: 0;
+    background: var(--theme);
+}
+
+.mermaid-container:fullscreen pre.mermaid {
+    flex: 1;
+    min-height: 0;
 }
