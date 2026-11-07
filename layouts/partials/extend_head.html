@@ -13,3 +13,7 @@
   });"></script>
 {{- end -}}
 
+{{- if or (.Params.mermaid) (site.Params.mermaid) (in .Content "class=\"mermaid\"") -}}
+{{- $mermaid := resources.Get "js/mermaid.js" | fingerprint -}}
+<script type="module" src="{{ $mermaid.RelPermalink }}"></script>
+{{- end -}}

@@ -35,3 +35,11 @@
     color: var(--primary);
     text-decoration: underline;
 }
+
+.post-content pre.mermaid {
+    overflow-x: auto;
+}
+
+.post-content pre.mermaid svg {
+    max-width: none;
+}

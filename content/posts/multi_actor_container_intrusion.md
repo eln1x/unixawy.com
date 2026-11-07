@@ -65,7 +65,7 @@ flowchart TB
     end
 
     subgraph ExternalC2_A["PANOPTICON Dead-Drop Channels"]
-        Ntfy["ntfy.sh Topics<br/>(comfy-bot-*-&#91;VICTIM_SLUG&#93;)"]
+        Ntfy["ntfy.sh Topics<br/>(comfy-bot-*-#91;VICTIM_SLUG#93;)"]
         Forgejo["Self-Hosted Forgejo API<br/>(93.125.18.x:19443 / pp135XXX/ppXX-sync)"]
         Webhook["webhook.site Fallback<br/>([REDACTED_WEBHOOK_TOKEN])"]
     end
@@ -379,6 +379,5 @@ Putting the two implants side by side highlights how different their operational
    Neither actor brought their own communication network. They relied completely on outbound HTTPS requests to public providers: `ntfy.sh`, Telegram, and Webhook.site. An egress firewall policy that blocks unapproved outbound traffic stops these dead-drop mechanisms in their tracks.
 4. **Mount `/tmp` as `noexec`**:
    Both the PANOPTICON script and the 193 MB DDoS binary staged their operational files inside `/tmp` and `~/.cache`. If `/tmp` had been mounted with `noexec` and the container ran with a read-only root filesystem, neither payload would have executed.
-
 
 

@@ -56,6 +56,11 @@ To run the blog locally:
    ```
 4. Open `http://localhost:1313` in your browser.
 
+Mermaid diagrams can be written as fenced `mermaid` code blocks or with the
+`mermaid` shortcode. Pages containing diagrams load Mermaid from jsDelivr;
+JavaScript and access to that CDN are required to render them. Wide diagrams
+can be scrolled horizontally.
+
 ---
 
 ## 📄 License & Content Rights

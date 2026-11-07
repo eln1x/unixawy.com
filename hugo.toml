@@ -105,7 +105,6 @@ buildFuture = false
     enabled = true
 
   math = true
-  mermaid = true
 
 [markup]
   [markup.goldmark]
